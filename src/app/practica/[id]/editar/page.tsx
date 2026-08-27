@@ -20,6 +20,8 @@ import {
   type VoiceSelection,
 } from "@/components/nueva/VoicePicker";
 import { prepareAll, prepareRound, type PrepState } from "@/lib/tts/queue";
+import { appendRound, deleteRoundCascade } from "@/lib/db/repositories";
+import { estimateSpokenSec, splitScript } from "@/lib/text/splitScript";
 import { ttsProvider } from "@/lib/tts/providers";
 import { styleById, type TtsProviderId } from "@/lib/tts/types";
 import { readAsObjectURL } from "@/lib/storage/opfs";
@@ -66,6 +68,8 @@ export default function EditPracticePage() {
   const [prep, setPrep] = React.useState<Record<string, PrepState>>({});
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [cached, setCached] = React.useState<Record<string, boolean>>({});
+  const [bulkOpen, setBulkOpen] = React.useState(false);
+  const [bulkText, setBulkText] = React.useState("");
   const [queueRunning, setQueueRunning] = React.useState(false);
   const abortRef = React.useRef<AbortController | null>(null);
 
@@ -74,8 +78,22 @@ export default function EditPracticePage() {
 
   React.useEffect(() => {
     if (!practice || !rounds) return;
-    setOrder(practice.roundIds);
-    setTexts(Object.fromEntries(rounds.map((r) => [r.id, r.text])));
+    // Se mezcla en lugar de sobrescribir: al añadir o quitar una ronda este
+    // efecto vuelve a correr, y reemplazar borraría lo que estés escribiendo.
+    setOrder((prev) => {
+      const known = new Set(practice.roundIds);
+      const kept = prev.filter((rid) => known.has(rid));
+      const added = practice.roundIds.filter((rid) => !kept.includes(rid));
+      return [...kept, ...added];
+    });
+    setTexts((prev) => {
+      const next = { ...prev };
+      for (const r of rounds) if (!(r.id in next)) next[r.id] = r.text;
+      for (const key of Object.keys(next)) {
+        if (!rounds.some((r) => r.id === key)) delete next[key];
+      }
+      return next;
+    });
     setVoices((prev) => {
       const next = { ...prev };
       for (const r of rounds) {
@@ -96,6 +114,20 @@ export default function EditPracticePage() {
       }
       return next;
     });
+    // Hereda la voz ya usada, para no volver a "Voz del navegador" al entrar.
+    const saved = rounds.find((r) => r.ttsProvider);
+    if (saved) {
+      setGlobalVoice((g) =>
+        g.provider === DEFAULT_VOICE.provider && !g.voice
+          ? {
+              provider: saved.ttsProvider as TtsProviderId,
+              voice: saved.ttsVoice ?? "",
+              style: saved.ttsStyle ?? DEFAULT_VOICE.style,
+              rate: DEFAULT_VOICE.rate,
+            }
+          : g,
+      );
+    }
   }, [practice?.id, rounds?.length]);
 
   if (!practice) {
@@ -115,15 +147,23 @@ export default function EditPracticePage() {
     setOrder(next);
     setDirty(true);
   };
-  const remove = (rid: string) => {
+  const remove = async (rid: string) => {
+    if (order.length <= 1) return; // una práctica necesita al menos una ronda
     setOrder((o) => o.filter((x) => x !== rid));
-    setDirty(true);
+    await deleteRoundCascade(id, rid);
   };
 
   const setVoiceFor = (rid: string, v: VoiceSelection) => {
+    const prev = voices[rid];
+    const changed =
+      !!prev &&
+      (prev.provider !== v.provider ||
+        prev.voice !== v.voice ||
+        prev.style !== v.style);
     setVoices((s) => ({ ...s, [rid]: v }));
-    // Cambiar la voz invalida el audio ya preparado.
-    setPrep((s) => ({ ...s, [rid]: "idle" }));
+    // Solo invalida el audio si la voz cambió de verdad. El selector fija
+    // una voz por defecto al montar, y eso no debe marcar "sin preparar".
+    if (changed) setPrep((s) => ({ ...s, [rid]: "idle" }));
   };
 
   async function prepareOne(rid: string) {
@@ -171,6 +211,27 @@ export default function EditPracticePage() {
       abortRef.current.signal,
     );
     setQueueRunning(false);
+  }
+
+  async function addOne(text = "") {
+    const r = await appendRound(id, {
+      text,
+      durationSec: text ? estimateSpokenSec(text) : 3,
+    });
+    if (r) {
+      setOrder((o) => [...o, r.id]);
+      setTexts((t) => ({ ...t, [r.id]: text }));
+      setVoices((v) => ({ ...v, [r.id]: { ...globalVoice } }));
+      setPrep((pr) => ({ ...pr, [r.id]: "idle" }));
+    }
+  }
+
+  async function addFromText() {
+    const lines = splitScript(bulkText);
+    if (!lines.length) return;
+    for (const l of lines) await addOne(l.text);
+    setBulkText("");
+    setBulkOpen(false);
   }
 
   const save = async () => {
@@ -241,7 +302,12 @@ export default function EditPracticePage() {
           <VoicePicker
             value={globalVoice}
             onChange={(v) => {
+              const changed =
+                globalVoice.provider !== v.provider ||
+                globalVoice.voice !== v.voice ||
+                globalVoice.style !== v.style;
               setGlobalVoice(v);
+              if (!changed) return;
               setVoices((s) => {
                 const next = { ...s };
                 for (const rid of order) next[rid] = { ...v };
@@ -304,7 +370,17 @@ export default function EditPracticePage() {
                   <Button variant="outline" size="sm" onClick={() => move(i, 1)}>
                     Bajar
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => remove(rid)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void remove(rid)}
+                    disabled={order.length <= 1}
+                    title={
+                      order.length <= 1
+                        ? "Una práctica necesita al menos una ronda"
+                        : undefined
+                    }
+                  >
                     Quitar
                   </Button>
                 </div>
@@ -372,6 +448,44 @@ export default function EditPracticePage() {
           );
         })}
       </ol>
+
+      <Card className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => void addOne()}>
+            + Añadir ronda
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setBulkOpen((v) => !v)}
+            aria-expanded={bulkOpen}
+          >
+            Añadir varias desde texto
+          </Button>
+          <span className="text-sm text-ink-soft">
+            {order.length} {order.length === 1 ? "ronda" : "rondas"}
+          </span>
+        </div>
+
+        {bulkOpen && (
+          <div className="space-y-2">
+            <Textarea
+              aria-label="Frases nuevas"
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              rows={4}
+              placeholder={"Una frase por línea.\nCada línea será una ronda nueva."}
+            />
+            <div className="flex gap-2">
+              <Button onClick={() => void addFromText()} disabled={!bulkText.trim()}>
+                Añadir {splitScript(bulkText).length || ""} rondas
+              </Button>
+              <Button variant="ghost" onClick={() => setBulkOpen(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
 
       <div className="sticky bottom-20 flex flex-wrap items-center gap-2 sm:bottom-4">
         {/* Generar una voz ya persiste la ronda, así que este botón nunca

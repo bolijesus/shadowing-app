@@ -6,7 +6,14 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/db";
 import type { Clip, MediaItem, Practice, Round, Transcript } from "@/lib/types";
 import { Button } from "@/components/ui/primitives";
-import { Dialog } from "@/components/ui/Dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Waveform } from "@/components/waveform/Waveform";
 import { SegmentedProgress } from "@/components/practice/SegmentedProgress";
 import { Countdown } from "@/components/practice/Countdown";
@@ -390,7 +397,7 @@ export default function PracticePlayerPage() {
       <header className="flex items-center justify-between border-b-2 border-line bg-surface px-4 py-3">
         <button
           onClick={() => router.push("/")}
-          className="rounded-control border-2 border-line-strong px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
+          className="rounded-lg border-2 border-line-strong px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
         >
           ✕ Salir
         </button>
@@ -412,7 +419,7 @@ export default function PracticePlayerPage() {
       </div>
 
       {sourceIssue && (
-        <div className="mx-4 mt-3 rounded-control border-2 border-accent bg-accent-tint px-4 py-3 text-sm text-accent-ink">
+        <div className="mx-4 mt-3 rounded-lg border-2 border-brand bg-brand-tint px-4 py-3 text-sm text-brand-ink">
           {sourceIssue.kind === "permission" ? (
             <div className="space-y-2">
               <p>
@@ -420,7 +427,7 @@ export default function PracticePlayerPage() {
                 <strong>{sourceIssue.fileName}</strong>.
               </p>
               <Button
-                variant="secondary"
+                variant="outline"
                 onClick={async () => {
                   const ok = await requestHandlePermission(sourceIssue.handle);
                   if (ok) {
@@ -466,13 +473,13 @@ export default function PracticePlayerPage() {
             </div>
             <button
               onClick={() => setTextHidden((v) => !v)}
-              className="shrink-0 rounded-control border-2 border-line-strong bg-surface px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
+              className="shrink-0 rounded-lg border-2 border-line-strong bg-surface px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
             >
               {textOpacity === 0 ? "Mostrar texto" : "Ocultar texto"}
             </button>
           </div>
           <div
-            className="mt-3 rounded-card bg-panel p-5 transition-opacity"
+            className="mt-3 rounded-xl bg-panel p-5 transition-opacity"
             style={{ opacity: textOpacity || 0.001 }}
             aria-hidden={textOpacity === 0}
           >
@@ -516,7 +523,7 @@ export default function PracticePlayerPage() {
             <>
               <div className="grid grid-cols-2 gap-2">
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   onClick={() =>
                     playerRef.current?.playing ? pauseModel() : playModel(true)
                   }
@@ -525,14 +532,14 @@ export default function PracticePlayerPage() {
                   {playerRef.current?.playing ? "Pausar" : "Escuchar modelo"}
                 </Button>
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   onClick={() => setLoop((v) => !v)}
                   aria-pressed={loop}
                 >
                   {loop ? "Bucle: activado" : "Bucle A–B"}
                 </Button>
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   className="col-span-2"
                   onClick={() => {
                     cancelBrowserSpeech();
@@ -548,8 +555,8 @@ export default function PracticePlayerPage() {
               </div>
               <Button
                 variant="record"
-                full
-                className="h-16 text-lg"
+               
+                className="w-full h-16 text-lg"
                 onClick={startCountdown}
               >
                 ● Grabar mi voz
@@ -560,8 +567,8 @@ export default function PracticePlayerPage() {
           {phase === "recording" && (
             <Button
               variant="record"
-              full
-              className="h-16 text-lg"
+             
+              className="w-full h-16 text-lg"
               onClick={() => void stopRecording()}
             >
               ■ Detener ({Math.round(recPct * 100)}%)
@@ -571,23 +578,23 @@ export default function PracticePlayerPage() {
           {phase === "compare" && (
             <>
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="secondary" onClick={() => playModel(true)}>
+                <Button variant="outline" onClick={() => playModel(true)}>
                   Reproducir modelo
                 </Button>
-                <Button variant="secondary" onClick={playMine}>
+                <Button variant="outline" onClick={playMine}>
                   Reproducir la mía
                 </Button>
-                <Button variant="secondary" onClick={playBoth}>
+                <Button variant="outline" onClick={playBoth}>
                   Reproducir juntas
                 </Button>
-                <Button variant="secondary" onClick={startCountdown}>
+                <Button variant="outline" onClick={startCountdown}>
                   Grabar otra vez
                 </Button>
               </div>
               <Button
-                variant="primary"
-                full
-                className="h-14"
+                variant="default"
+               
+                className="w-full h-14"
                 onClick={() => void saveAndContinue()}
               >
                 {idx + 1 < total
@@ -619,17 +626,21 @@ export default function PracticePlayerPage() {
         </div>
       </main>
 
-      <Dialog
-        open={showHeadphones}
-        onClose={() => {
-          setSetting("usesHeadphones", false);
-          setShowHeadphones(false);
-        }}
-        title="¿Estás usando auriculares?"
-        footer={
-          <>
+      <Dialog open={showHeadphones} onOpenChange={(o) => !o && setShowHeadphones(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="h-display text-lg">
+              ¿Estás usando auriculares?
+            </DialogTitle>
+            <DialogDescription>
+              Sin auriculares, el micrófono capta también el audio del modelo y
+              las comparaciones dejan de tener sentido. Si llevas auriculares, se
+              desactiva la cancelación de eco para analizar mejor tu voz.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
             <Button
-              variant="secondary"
+              variant="outline"
               onClick={() => {
                 setSetting("usesHeadphones", false);
                 setShowHeadphones(false);
@@ -638,7 +649,6 @@ export default function PracticePlayerPage() {
               No
             </Button>
             <Button
-              variant="primary"
               onClick={() => {
                 setSetting("usesHeadphones", true);
                 setShowHeadphones(false);
@@ -646,25 +656,32 @@ export default function PracticePlayerPage() {
             >
               Sí, llevo auriculares
             </Button>
-          </>
-        }
-      >
-        Sin auriculares, el micrófono capta también el audio del modelo y las
-        comparaciones dejan de tener sentido. Si llevas auriculares, se desactiva
-        la cancelación de eco para analizar mejor tu voz.
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
       <Dialog
         open={showMicExplain}
-        onClose={() => {
-          setShowMicExplain(false);
-          pendingRecord.current = false;
+        onOpenChange={(o) => {
+          if (!o) {
+            setShowMicExplain(false);
+            pendingRecord.current = false;
+          }
         }}
-        title="Permiso de micrófono"
-        footer={
-          <>
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="h-display text-lg">
+              Permiso de micrófono
+            </DialogTitle>
+            <DialogDescription>
+              La app pedirá acceso al micrófono para grabar tu voz. El audio se
+              queda en este dispositivo: no se envía a ningún servidor.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
             <Button
-              variant="secondary"
+              variant="outline"
               onClick={() => {
                 setShowMicExplain(false);
                 pendingRecord.current = false;
@@ -673,7 +690,6 @@ export default function PracticePlayerPage() {
               Ahora no
             </Button>
             <Button
-              variant="primary"
               onClick={() => {
                 micGranted.current = true;
                 setShowMicExplain(false);
@@ -686,11 +702,8 @@ export default function PracticePlayerPage() {
             >
               Permitir y grabar
             </Button>
-          </>
-        }
-      >
-        La app pedirá acceso al micrófono para grabar tu voz. El audio se queda en
-        este dispositivo: no se envía a ningún servidor.
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </div>
   );
@@ -709,9 +722,9 @@ function DotMeter({ value }: { value: number }) {
   const dots = 30;
   const filled = Math.round(value * dots);
   return (
-    <div className="rounded-control border-2 border-ok/40 bg-ok/5 px-3 py-3">
+    <div className="rounded-lg border-2 border-ok/40 bg-ok/5 px-3 py-3">
       <div className="mb-1.5 flex items-center justify-between text-xs font-bold">
-        <span className="text-accent-ink">Grabando</span>
+        <span className="text-brand-ink">Grabando</span>
         <span className="text-ink-soft">{Math.round(value * 100)}%</span>
       </div>
       <div className="flex items-end gap-1">

@@ -7,7 +7,15 @@ import {
   type StorageBreakdown,
 } from "@/lib/storage/accounting";
 import { Button, Card, Eyebrow, TextInput } from "@/components/ui/primitives";
-import { Dialog, useConfirm } from "@/components/ui/Dialog";
+import { useConfirm } from "@/components/ui/confirm";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { deleteBlob } from "@/lib/storage/blobStore";
 import {
   deleteRecordingsOlderThan,
@@ -107,7 +115,7 @@ export default function StoragePage() {
         {(data?.byCategory ?? []).map((c) => (
           <div
             key={c.category}
-            className="flex items-center justify-between rounded-control border border-line bg-surface px-4 py-2.5 text-sm"
+            className="flex items-center justify-between rounded-lg border border-line bg-surface px-4 py-2.5 text-sm"
           >
             <span className="font-semibold text-ink">
               {CATEGORY_LABEL[c.category]}
@@ -138,7 +146,7 @@ export default function StoragePage() {
             </button>
           </div>
         </div>
-        <div className="divide-y divide-line rounded-card border border-line bg-surface">
+        <div className="divide-y divide-line rounded-xl border border-line bg-surface">
           {items.length === 0 && (
             <p className="p-4 text-sm text-ink-soft">Nada guardado todavía.</p>
           )}
@@ -169,7 +177,7 @@ export default function StoragePage() {
                     void refresh();
                   }
                 }}
-                className="shrink-0 text-xs font-semibold text-ink-soft hover:text-accent"
+                className="shrink-0 text-xs font-semibold text-ink-soft hover:text-brand"
               >
                 Borrar
               </button>
@@ -182,7 +190,7 @@ export default function StoragePage() {
         <h2 className="font-display text-lg font-bold">Limpieza</h2>
         <div className="grid gap-2 sm:grid-cols-2">
           <Button
-            variant="secondary"
+            variant="outline"
             onClick={async () => {
               const n = await deleteRecordingsOlderThan(30);
               await refresh();
@@ -196,7 +204,7 @@ export default function StoragePage() {
             Borrar grabaciones de +30 días
           </Button>
           <Button
-            variant="secondary"
+            variant="outline"
             onClick={async () => {
               const n = await deleteUnsavedTakes();
               await refresh();
@@ -210,9 +218,9 @@ export default function StoragePage() {
             Borrar solo tomas no guardadas
           </Button>
         </div>
-        <Button
+        <Button className="w-full"
           variant="record"
-          full
+         
           onClick={() => {
             setWipeWord("");
             setWipeOpen(true);
@@ -224,12 +232,45 @@ export default function StoragePage() {
 
       <Dialog
         open={wipeOpen}
-        onClose={() => !wipeStep && setWipeOpen(false)}
-        title="Borrar todos los datos"
-        footer={
-          <>
+        onOpenChange={(o) => {
+          if (!o && !wipeStep) setWipeOpen(false);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="h-display text-lg">
+              Borrar todos los datos
+            </DialogTitle>
+            <DialogDescription>
+              Se borrarán medios importados, voces, grabaciones, recortes,
+              análisis, modelos, transcripciones, cachés y preferencias. Los
+              archivos que referencias por ruta no se tocan.
+            </DialogDescription>
+          </DialogHeader>
+
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              className="size-4 accent-[var(--brand)]"
+              checked={wipeKeys}
+              onChange={(e) => setWipeKeys(e.target.checked)}
+            />
+            Borrar también las API keys guardadas
+          </label>
+          <div className="space-y-1.5">
+            <p className="text-sm">
+              Escribe <strong>BORRAR</strong> para confirmar:
+            </p>
+            <TextInput
+              aria-label="Escribe BORRAR para confirmar"
+              value={wipeWord}
+              onChange={(e) => setWipeWord(e.target.value)}
+            />
+          </div>
+
+          <DialogFooter>
             <Button
-              variant="secondary"
+              variant="outline"
               disabled={!!wipeStep}
               onClick={() => setWipeOpen(false)}
             >
@@ -241,36 +282,14 @@ export default function StoragePage() {
               onClick={() =>
                 wipeAllData({
                   wipeApiKeys: wipeKeys,
-                  onProgress: (s) => setWipeStep(s),
+                  onProgress: (st) => setWipeStep(st),
                 })
               }
             >
               {wipeStep ?? "Borrar definitivamente"}
             </Button>
-          </>
-        }
-      >
-        <p>
-          Se borrarán medios importados, voces, grabaciones, recortes, análisis,
-          modelos, transcripciones, cachés y preferencias. Los archivos que
-          referencias por ruta no se tocan.
-        </p>
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={wipeKeys}
-            onChange={(e) => setWipeKeys(e.target.checked)}
-          />
-          Borrar también las API keys guardadas
-        </label>
-        <p className="mt-3 text-sm">
-          Escribe <strong>BORRAR</strong> para confirmar:
-        </p>
-        <TextInput
-          value={wipeWord}
-          onChange={(e) => setWipeWord(e.target.value)}
-          className="mt-1"
-        />
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
       {node}

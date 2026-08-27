@@ -55,7 +55,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               key={n.href}
               href={n.href}
               className={cx(
-                "rounded-control px-3 py-2 text-sm font-semibold",
+                "rounded-lg px-3 py-2 text-sm font-semibold",
                 pathname === n.href
                   ? "bg-ink text-white"
                   : "text-ink-soft hover:bg-panel hover:text-ink",
@@ -76,7 +76,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
             href={n.href}
             className={cx(
               "flex flex-1 flex-col items-center justify-center gap-0.5 py-3 text-xs font-semibold",
-              pathname === n.href ? "text-accent" : "text-ink-soft",
+              pathname === n.href ? "text-brand" : "text-ink-soft",
             )}
           >
             {n.label}

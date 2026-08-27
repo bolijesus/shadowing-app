@@ -24,7 +24,7 @@ export function SegmentedProgress({
             onClick={onJump ? () => onJump(i) : undefined}
             className={[
               "h-1.5 flex-1 rounded-full transition-colors",
-              done[i] ? "bg-accent" : i === current ? "bg-ink" : "bg-line",
+              done[i] ? "bg-brand" : i === current ? "bg-ink" : "bg-line",
             ].join(" ")}
           />
         );

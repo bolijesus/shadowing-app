@@ -1,118 +1,112 @@
 "use client";
 
 import * as React from "react";
+import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-export function cx(...parts: (string | false | null | undefined)[]): string {
-  return parts.filter(Boolean).join(" ");
-}
+/**
+ * Capa fina sobre shadcn/ui con las piezas propias del sistema §12
+ * (eyebrow, panel con padding, campo etiquetado, estado vacío).
+ * Los componentes base — Button, Card, Input, Select, Dialog… — son de
+ * shadcn/ui, reestilizados desde los tokens en globals.css.
+ */
 
+export { cn as cx };
+export { Button } from "@/components/ui/button";
+export { Input as TextInput } from "@/components/ui/input";
+export { Label };
+
+/** `PRÁCTICA · CONFIANZA EN EL TRABAJO` — mayúsculas 11px en rojo. */
 export function Eyebrow({ children }: { children: React.ReactNode }) {
   return <p className="eyebrow">{children}</p>;
 }
 
-export function Card({
+/** Tarjeta con padding, la forma más común en la app. */
+export function Panel({
   children,
   className,
-  as: As = "div",
   ...rest
-}: {
-  children: React.ReactNode;
-  className?: string;
-  as?: React.ElementType;
-} & React.HTMLAttributes<HTMLElement>) {
+}: React.ComponentProps<typeof Card>) {
   return (
-    <As
-      className={cx(
-        "rounded-card border-2 border-line bg-surface p-5",
-        className,
-      )}
-      {...rest}
-    >
-      {children}
-    </As>
+    <Card className={className} {...rest}>
+      <CardContent>{children}</CardContent>
+    </Card>
   );
 }
 
-type ButtonVariant = "primary" | "secondary" | "record" | "ghost";
+export { Panel as Card };
 
-export const Button = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    variant?: ButtonVariant;
-    full?: boolean;
-  }
->(function Button(
-  { variant = "secondary", full, className, children, ...rest },
-  ref,
-) {
-  const base =
-    "inline-flex items-center justify-center gap-2 rounded-control font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[48px] px-5 text-[15px]";
-  const styles: Record<ButtonVariant, string> = {
-    primary:
-      "bg-ink text-white border-2 border-ink hover:bg-black hover:border-black",
-    secondary:
-      "border-2 border-line-strong bg-surface text-ink hover:border-ink hover:bg-panel",
-    record:
-      "border-2 border-accent bg-accent-tint text-accent-ink hover:bg-accent hover:text-white hover:border-accent",
-    ghost:
-      "border-2 border-transparent text-ink-soft font-semibold hover:text-ink hover:bg-panel",
-  };
-  return (
-    <button
-      ref={ref}
-      className={cx(base, styles[variant], full && "w-full", className)}
-      {...rest}
-    >
-      {children}
-    </button>
-  );
-});
-
+/** Campo etiquetado: label del sistema + control debajo. */
 export function Field({
   label,
   hint,
   children,
   htmlFor,
+  className,
 }: {
   label: string;
-  hint?: string;
+  hint?: React.ReactNode;
   children: React.ReactNode;
   htmlFor?: string;
+  className?: string;
 }) {
   return (
-    <label className="block" htmlFor={htmlFor}>
-      <span className="mb-1.5 block text-sm font-semibold text-ink">{label}</span>
+    <div className={cn("space-y-1.5", className)}>
+      <Label htmlFor={htmlFor} className="font-bold text-ink">
+        {label}
+      </Label>
       {children}
-      {hint && <span className="mt-1 block text-xs text-ink-soft">{hint}</span>}
-    </label>
+      {hint && <p className="text-xs text-ink-soft">{hint}</p>}
+    </div>
   );
 }
 
-export function TextInput(
-  props: React.InputHTMLAttributes<HTMLInputElement>,
-) {
-  return (
-    <input
-      {...props}
-      className={cx(
-        "w-full rounded-control border-2 border-line-strong bg-surface px-3 py-2.5 text-[15px] font-medium text-ink outline-none focus:border-ink",
-        props.className,
-      )}
-    />
-  );
+export interface SelectOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
 }
 
-export function Select(
-  props: React.SelectHTMLAttributes<HTMLSelectElement>,
-) {
+/** Select de shadcn (Radix) con una API breve de opciones. */
+export function SelectField({
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  disabled,
+  className,
+  "aria-label": ariaLabel,
+}: {
+  value: string;
+  onValueChange: (v: string) => void;
+  options: SelectOption[];
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+  "aria-label"?: string;
+}) {
   return (
-    <select
-      {...props}
-      className={cx(
-        "w-full rounded-control border-2 border-line-strong bg-surface px-3 py-2.5 text-[15px] font-medium text-ink outline-none focus:border-ink",
-        props.className,
-      )}
-    />
+    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <SelectTrigger className={cn("w-full font-semibold", className)} aria-label={ariaLabel}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value} disabled={o.disabled}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -124,8 +118,8 @@ export function EmptyState({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-card border-2 border-dashed border-line-strong bg-surface/50 p-8 text-center">
-      <p className="font-display text-lg font-bold text-ink">{title}</p>
+    <div className="rounded-xl border-2 border-dashed border-line-strong bg-surface/50 p-8 text-center">
+      <p className="h-display text-lg">{title}</p>
       {children && (
         <div className="mx-auto mt-2 max-w-sm text-sm text-ink-soft">
           {children}
@@ -134,3 +128,34 @@ export function EmptyState({
     </div>
   );
 }
+
+/** Pastilla de estado (`Sin preparar`, `Lista`, `Toma guardada`…). */
+export function Pill({
+  children,
+  tone = "neutral",
+  className,
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "ok" | "brand" | "data";
+  className?: string;
+}) {
+  const tones = {
+    neutral: "bg-panel text-ink-soft",
+    ok: "bg-ok/15 text-ok",
+    brand: "bg-brand-tint text-brand-ink",
+    data: "bg-data/10 text-data",
+  } as const;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-3 py-1 text-xs font-bold",
+        tones[tone],
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+export { Input, Card as RawCard, CardContent };

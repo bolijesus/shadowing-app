@@ -55,7 +55,7 @@ export function Waveform({
 
     const css = getComputedStyle(document.documentElement);
     const gray = css.getPropertyValue("--line-strong").trim() || "#a69c86";
-    const accent = css.getPropertyValue("--accent").trim() || "#f5402c";
+    const accent = css.getPropertyValue("--brand").trim() || "#f5402c";
     const ink = css.getPropertyValue("--ink").trim() || "#14141a";
     const hot = tone === "recording" || tone === "playing";
     const mid = height / 2;
@@ -167,7 +167,7 @@ export function Waveform({
         role={onSeek ? "slider" : "img"}
         aria-label={label ? `Onda ${label}` : "Forma de onda"}
         style={{ width: "100%", height }}
-        className="rounded-control border-2 border-line bg-panel"
+        className="rounded-lg border-2 border-line bg-panel"
         onClick={(e) => {
           if (!onSeek) return;
           const rect = e.currentTarget.getBoundingClientRect();

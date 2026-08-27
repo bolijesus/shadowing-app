@@ -73,10 +73,10 @@ export default function ResultsPage() {
 
       <div className="flex gap-2">
         <Link href={`/practica/${practice.id}`}>
-          <Button variant="primary">Repetir práctica</Button>
+          <Button variant="default">Repetir práctica</Button>
         </Link>
         <Link href={`/practica/${practice.id}/editar`}>
-          <Button variant="secondary">Editar rondas</Button>
+          <Button variant="outline">Editar rondas</Button>
         </Link>
       </div>
 

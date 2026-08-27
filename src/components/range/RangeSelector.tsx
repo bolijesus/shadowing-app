@@ -59,12 +59,12 @@ export function RangeSelector({
     <div className="space-y-3">
       <div
         ref={trackRef}
-        className="relative h-12 w-full rounded-control bg-panel"
+        className="relative h-12 w-full rounded-lg bg-panel"
         role="group"
         aria-label="Línea de tiempo del recorte"
       >
         <div
-          className="absolute inset-y-0 rounded-control bg-accent/20"
+          className="absolute inset-y-0 rounded-lg bg-brand/20"
           style={{ left: `${pctStart}%`, right: `${100 - pctEnd}%` }}
         />
         {(["start", "end"] as const).map((which) => (
@@ -79,7 +79,7 @@ export function RangeSelector({
               if (e.key === "ArrowRight")
                 which === "start" ? setStart(start + delta) : setEnd(end + delta);
             }}
-            className="absolute top-1/2 h-10 w-4 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded bg-accent"
+            className="absolute top-1/2 h-10 w-4 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded bg-brand"
             style={{ left: `${which === "start" ? pctStart : pctEnd}%` }}
           />
         ))}
@@ -126,7 +126,7 @@ export function RangeSelector({
           <strong className="text-ink">{fmtClock(end - start)}</strong>
         </span>
         {onPreview && (
-          <Button variant="secondary" onClick={onPreview}>
+          <Button variant="outline" onClick={onPreview}>
             Previsualizar rango
           </Button>
         )}

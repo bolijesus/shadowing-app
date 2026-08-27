@@ -25,7 +25,7 @@ export function Countdown({
 
   return (
     <div
-      className="flex flex-col items-center justify-center gap-1 rounded-card bg-ink py-12 text-white"
+      className="flex flex-col items-center justify-center gap-1 rounded-xl bg-ink py-12 text-white"
       role="alertdialog"
       aria-label={`${label}. ${n > 0 ? n : "ya"}`}
     >

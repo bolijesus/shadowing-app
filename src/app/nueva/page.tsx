@@ -7,9 +7,10 @@ import {
   Card,
   Eyebrow,
   Field,
-  Select,
+  SelectField,
   TextInput,
 } from "@/components/ui/primitives";
+import { Textarea } from "@/components/ui/textarea";
 import { RangeSelector } from "@/components/range/RangeSelector";
 import {
   ACCEPT_ATTR,
@@ -244,7 +245,7 @@ export default function NuevaPracticaPage() {
           <span
             key={s}
             className={
-              step === s ? "text-accent" : i < STEP_ORDER[step] ? "text-ink" : ""
+              step === s ? "text-brand" : i < STEP_ORDER[step] ? "text-ink" : ""
             }
           >
             {i + 1}. {STEP_LABEL[s]}
@@ -254,12 +255,12 @@ export default function NuevaPracticaPage() {
       </div>
 
       {error && (
-        <div className="rounded-control border border-accent bg-accent-tint px-4 py-3 text-sm text-accent">
+        <div className="rounded-lg border border-brand bg-brand-tint px-4 py-3 text-sm text-brand">
           {error}
         </div>
       )}
       {busy && (
-        <div className="rounded-control border border-line bg-panel px-4 py-3 text-sm text-ink-soft">
+        <div className="rounded-lg border border-line bg-panel px-4 py-3 text-sm text-ink-soft">
           {busy}
         </div>
       )}
@@ -271,7 +272,7 @@ export default function NuevaPracticaPage() {
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <button
               onClick={() => setStep("file")}
-              className="rounded-card border border-line bg-surface p-5 text-left hover:bg-panel"
+              className="rounded-xl border border-line bg-surface p-5 text-left hover:bg-panel"
             >
               <p className="font-display text-lg font-bold">
                 Archivo del dispositivo
@@ -288,7 +289,7 @@ export default function NuevaPracticaPage() {
             ].map(([t, d]) => (
               <div
                 key={t}
-                className="rounded-card border border-dashed border-line p-5 text-left opacity-60"
+                className="rounded-xl border border-dashed border-line p-5 text-left opacity-60"
               >
                 <p className="font-display text-lg font-bold">{t}</p>
                 <p className="mt-1 text-sm text-ink-soft">{d}</p>
@@ -311,7 +312,7 @@ export default function NuevaPracticaPage() {
 
           {fsAccessSupported() ? (
             <div className="space-y-3">
-              <Button variant="primary" full onClick={chooseWithFsAccess}>
+              <Button className="w-full" variant="default" onClick={chooseWithFsAccess}>
                 Seleccionar archivo
               </Button>
               <p className="text-xs text-ink-soft">
@@ -326,7 +327,7 @@ export default function NuevaPracticaPage() {
                   type="file"
                   accept={ACCEPT_ATTR}
                   onChange={onInputFile}
-                  className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-control file:border-0 file:bg-ink file:px-4 file:py-2 file:font-semibold file:text-white"
+                  className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-ink file:px-4 file:py-2 file:font-semibold file:text-white"
                 />
               </label>
               {pendingFile && (
@@ -337,13 +338,13 @@ export default function NuevaPracticaPage() {
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button
-                      variant="secondary"
+                      variant="outline"
                       onClick={() => confirmPendingFile("session")}
                     >
                       Usar solo en esta sesión
                     </Button>
                     <Button
-                      variant="primary"
+                      variant="default"
                       onClick={() => confirmPendingFile("opfs")}
                     >
                       Importar a la app ({fmtBytes(pendingFile.size)})
@@ -374,7 +375,7 @@ export default function NuevaPracticaPage() {
                 type="file"
                 accept=".srt,.vtt,.ass,.ssa,text/vtt"
                 onChange={onSubsFile}
-                className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-control file:border-0 file:bg-ink file:px-4 file:py-2 file:font-semibold file:text-white"
+                className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-ink file:px-4 file:py-2 file:font-semibold file:text-white"
               />
             </Field>
             {cues.length > 0 && (
@@ -389,14 +390,14 @@ export default function NuevaPracticaPage() {
               label="…o escríbelo a mano"
               hint="Una frase por línea. Se reparten en el rango elegido."
             >
-              <textarea
+              <Textarea
+                aria-label="Texto a mano"
                 value={manualText}
                 onChange={(e) => setManualText(e.target.value)}
                 rows={4}
-                className="w-full rounded-control border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-ink"
               />
             </Field>
-            <Button variant="secondary" onClick={applyManualText}>
+            <Button variant="outline" onClick={applyManualText}>
               Usar este texto
             </Button>
           </Card>
@@ -409,16 +410,12 @@ export default function NuevaPracticaPage() {
               />
             </Field>
             <Field label="Idioma del contenido">
-              <Select
+              <SelectField
+                aria-label="Idioma del contenido"
                 value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-              >
-                {LANGS.map(([code, name]) => (
-                  <option key={code} value={code}>
-                    {name}
-                  </option>
-                ))}
-              </Select>
+                onValueChange={setLanguage}
+                options={LANGS.map(([value, label]) => ({ value, label }))}
+              />
             </Field>
           </div>
 
@@ -426,7 +423,7 @@ export default function NuevaPracticaPage() {
             <Button variant="ghost" onClick={() => setStep("file")}>
               ← Volver
             </Button>
-            <Button variant="primary" onClick={() => setStep("range")}>
+            <Button variant="default" onClick={() => setStep("range")}>
               Continuar
             </Button>
           </div>
@@ -470,7 +467,7 @@ export default function NuevaPracticaPage() {
 
           {cues.length > 0 && (
             <Button
-              variant="secondary"
+              variant="outline"
               onClick={() =>
                 setRange({
                   start: cues[0]!.start,
@@ -486,7 +483,7 @@ export default function NuevaPracticaPage() {
             <Button variant="ghost" onClick={() => setStep("subs")}>
               ← Volver
             </Button>
-            <Button variant="primary" onClick={() => setStep("rounds")}>
+            <Button variant="default" onClick={() => setStep("rounds")}>
               Continuar
             </Button>
           </div>
@@ -514,7 +511,7 @@ export default function NuevaPracticaPage() {
             ).map((s) => (
               <li
                 key={s.index}
-                className="rounded-control border border-line bg-surface px-3 py-2 text-sm"
+                className="rounded-lg border border-line bg-surface px-3 py-2 text-sm"
               >
                 <span className="mr-2 font-mono text-xs text-ink-soft">
                   {fmtClock(s.startSec)}–{fmtClock(s.endSec)}
@@ -526,24 +523,30 @@ export default function NuevaPracticaPage() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Actividad">
-              <Select value="shadowing-echo" disabled>
-                <option value="shadowing-echo">Shadowing · Eco</option>
-              </Select>
+              <SelectField
+                aria-label="Actividad"
+                value="shadowing-echo"
+                onValueChange={() => {}}
+                disabled
+                options={[{ value: "shadowing-echo", label: "Shadowing · Eco" }]}
+              />
             </Field>
             <Field
               label="Mostrar el texto"
               hint="&ldquo;Escalera&rdquo;: se atenúa y luego se oculta por vuelta."
             >
-              <Select
+              <SelectField
+                aria-label="Mostrar el texto"
                 value={showText}
-                onChange={(e) =>
-                  setShowText(e.target.value as "always" | "fade" | "never")
+                onValueChange={(v) =>
+                  setShowText(v as "always" | "fade" | "never")
                 }
-              >
-                <option value="always">Siempre</option>
-                <option value="fade">Escalera (recomendado)</option>
-                <option value="never">Nunca</option>
-              </Select>
+                options={[
+                  { value: "always", label: "Siempre" },
+                  { value: "fade", label: "Escalera (recomendado)" },
+                  { value: "never", label: "Nunca" },
+                ]}
+              />
             </Field>
           </div>
 
@@ -551,7 +554,7 @@ export default function NuevaPracticaPage() {
             <Button variant="ghost" onClick={() => setStep("range")}>
               ← Volver
             </Button>
-            <Button variant="primary" onClick={finish} disabled={!!busy}>
+            <Button variant="default" onClick={finish} disabled={!!busy}>
               Crear y empezar
             </Button>
           </div>

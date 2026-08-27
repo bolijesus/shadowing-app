@@ -1,30 +1,68 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* El tema oscuro se marca con data-theme en <html> (lo fija el bootstrap). */
+@custom-variant dark (&:is([data-theme="dark"] *), &:is([data-theme="dark"]));
 
 /*
-  Sistema de diseño — editorial, limpio, tipografía pesada, un acento rojo,
-  cifras de datos en azul. Tokens del prompt §12, con contraste reforzado:
-  bordes de controles bien visibles para que nada se pierda sobre el crema.
+  Sistema de diseño §12 — editorial, limpio, tipografía muy pesada,
+  un solo acento rojo, cifras de datos en azul.
+  shadcn/ui se usa como base y se repinta desde aquí: cada token semántico
+  de shadcn apunta a un token del sistema, así todos sus componentes salen
+  ya con esta estética.
 */
 :root {
   --bg: #fdfaf5; /* crema cálido de fondo */
   --surface: #ffffff; /* tarjetas */
-  --panel: #ece7dd; /* paneles hundidos: texto de la frase, ondas */
-  --ink: #14141a; /* texto principal y botón primario */
-  --ink-soft: #5f5c55; /* texto secundario (contraste AA sobre crema) */
-  --accent: #f5402c; /* rojo: eyebrows, grabación, progreso */
-  --accent-ink: #d92d1a; /* rojo para texto pequeño (más contraste) */
-  --accent-tint: #fdeae7; /* fondo rojo muy claro para botón de grabar */
-  --data: #2438e8; /* azul: solo para cifras de puntuación */
+  --panel: #efebe5; /* paneles hundidos: frase objetivo, ondas */
+  --ink: #16161a; /* texto principal y botón primario */
+  --ink-soft: #5f5c55; /* secundario (AA sobre crema) */
+  --brand: #f5402c; /* rojo: eyebrows, grabación, progreso */
+  --brand-ink: #d92d1a; /* rojo con más contraste para texto pequeño */
+  --brand-tint: #fdeae7; /* rojo muy claro: fondo del botón de grabar */
+  --data: #2438e8; /* azul: solo cifras de puntuación */
   --ok: #158a5b;
-  --line: #d9d1c2; /* divisores */
-  --line-strong: #a69c86; /* bordes de controles interactivos */
+  --line: #ded6c9; /* divisores */
+  --line-strong: #a89e88; /* bordes de controles interactivos */
 
-  --radius-card: 14px;
-  --radius-control: 10px;
+  /* Mapeo de shadcn/ui al sistema. */
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: #ffffff;
+  --secondary: var(--panel);
+  --secondary-foreground: var(--ink);
+  --muted: var(--panel);
+  --muted-foreground: var(--ink-soft);
+  --accent: var(--panel); /* hover sutil de shadcn, NO el rojo */
+  --accent-foreground: var(--ink);
+  --destructive: var(--brand);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--data);
+  --radius: 10px; /* controles; las tarjetas usan radius-xl = 14px */
 
-  --font-display: "Inter Tight", "Inter", system-ui, -apple-system,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-body: var(--font-display);
+  --chart-1: var(--data);
+  --chart-2: var(--brand);
+  --chart-3: var(--ok);
+  --chart-4: var(--ink-soft);
+  --chart-5: var(--line-strong);
+
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--panel);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--data);
+
+  --font-display: var(--font-sans);
 }
 
 :root[data-theme="dark"] {
@@ -33,32 +71,74 @@
   --panel: #292930;
   --ink: #f5f2ea;
   --ink-soft: #b3aea3;
-  --accent: #ff5a44;
-  --accent-ink: #ff7663;
-  --accent-tint: #3a201c;
+  --brand: #ff5a44;
+  --brand-ink: #ff7663;
+  --brand-tint: #3a201c;
   --data: #8b98ff;
   --ok: #46c58c;
   --line: #35353d;
-  --line-strong: #565660;
+  --line-strong: #5b5b66;
+
+  --primary-foreground: #131317;
+  --sidebar-primary-foreground: #131317;
 }
 
 @theme inline {
+  /* Tokens propios del sistema §12. */
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-panel: var(--panel);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
-  --color-accent: var(--accent);
-  --color-accent-ink: var(--accent-ink);
-  --color-accent-tint: var(--accent-tint);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-tint: var(--brand-tint);
   --color-data: var(--data);
   --color-ok: var(--ok);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --font-display: var(--font-display);
-  --font-body: var(--font-body);
-  --radius-card: var(--radius-card);
-  --radius-control: var(--radius-control);
+
+  /* Tokens de shadcn/ui. */
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius); /* 10px — controles */
+  --radius-xl: calc(var(--radius) * 1.4); /* 14px — tarjetas */
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 html {
@@ -68,18 +148,14 @@ html {
 
 body {
   min-height: 100%;
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Foco visible por teclado en todo lo accionable (§1.8). */
+/* §1.8 — foco visible por teclado en todo lo accionable. */
 :focus-visible {
   outline: 3px solid var(--data);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -93,18 +169,31 @@ body {
   }
 }
 
-/* Eyebrow: mayúsculas, 11px, tracking amplio, en rojo. */
+/* Eyebrow: mayúsculas, 11px, letter-spacing 0.08em, en rojo. */
 .eyebrow {
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 0.09em;
   font-weight: 800;
-  color: var(--accent-ink);
+  color: var(--brand-ink);
 }
 
+/* Titulares: grotesca geométrica en 800, tracking −0.02em. */
 .h-display {
   font-family: var(--font-display);
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.05;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

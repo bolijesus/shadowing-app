@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/db";
 import { Button, Card, Eyebrow, EmptyState, TextInput } from "@/components/ui/primitives";
-import { useConfirm } from "@/components/ui/Dialog";
+import { useConfirm } from "@/components/ui/confirm";
 import {
   deleteClipCascade,
   deleteMediaCascade,
@@ -89,7 +89,7 @@ export default function LibraryPage() {
             ))
         ) : (
           <EmptyState title="Sin prácticas">
-            <Link href="/nueva" className="font-semibold text-accent">
+            <Link href="/nueva" className="font-semibold text-brand">
               Crea la primera →
             </Link>
           </EmptyState>
@@ -141,7 +141,7 @@ export default function LibraryPage() {
                   {mClips.map((c) => (
                     <div
                       key={c.id}
-                      className="flex items-center justify-between rounded-control bg-panel px-3 py-2 text-sm"
+                      className="flex items-center justify-between rounded-lg bg-panel px-3 py-2 text-sm"
                     >
                       <span>
                         {c.title}{" "}
@@ -150,7 +150,7 @@ export default function LibraryPage() {
                         </span>
                       </span>
                       <button
-                        className="text-xs font-semibold text-ink-soft hover:text-accent"
+                        className="text-xs font-semibold text-ink-soft hover:text-brand"
                         onClick={async () => {
                           if (
                             await confirm({

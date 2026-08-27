@@ -27,7 +27,7 @@ export default function HomePage() {
       </section>
 
       <Link href="/nueva" className="block">
-        <Button variant="primary" full className="h-16 text-lg">
+        <Button variant="default" className="w-full h-16 text-lg">
           Nueva práctica
         </Button>
       </Link>
@@ -59,7 +59,7 @@ export default function HomePage() {
               <li key={p.id}>
                 <Link
                   href={`/practica/${p.id}`}
-                  className="flex items-center justify-between rounded-card border border-line bg-surface px-4 py-3 hover:bg-panel"
+                  className="flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 hover:bg-panel"
                 >
                   <span>
                     <span className="font-semibold text-ink">{p.title}</span>

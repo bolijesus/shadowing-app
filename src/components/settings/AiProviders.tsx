@@ -6,7 +6,8 @@ import {
   Card,
   Eyebrow,
   Field,
-  Select,
+  Pill,
+  SelectField,
   TextInput,
 } from "@/components/ui/primitives";
 import {
@@ -35,7 +36,7 @@ import {
   speakWithBrowser,
   cancelBrowserSpeech,
 } from "@/lib/tts/browser";
-import { useConfirm } from "@/components/ui/Dialog";
+import { useConfirm } from "@/components/ui/confirm";
 
 const CAP_LABEL: Record<Capability, string> = {
   tts: "Voz generada (TTS)",
@@ -101,7 +102,7 @@ export function AiProviders() {
         <h2 className="h-display mt-1 text-xl">Voz, dictado y texto</h2>
       </div>
 
-      <div className="rounded-card border-2 border-accent bg-accent-tint p-4 text-sm text-accent-ink">
+      <div className="rounded-xl border-l-4 border-brand bg-brand-tint p-4 text-sm text-brand-ink">
         <p className="font-bold">Aviso honesto</p>
         <p className="mt-1">
           Una API key guardada en el navegador es legible por cualquiera con
@@ -128,7 +129,7 @@ export function AiProviders() {
                 placeholder="Passphrase"
               />
               <Button
-                variant="primary"
+                variant="default"
                 onClick={async () => {
                   const ok = await unlock(unlockPass);
                   setUnlockPass("");
@@ -142,11 +143,9 @@ export function AiProviders() {
           </div>
         ) : encrypted ? (
           <div className="flex flex-wrap gap-2">
-            <span className="rounded-full bg-ok/15 px-3 py-1 text-xs font-bold text-ok">
-              Cifrado activado y desbloqueado
-            </span>
+            <Pill tone="ok">Cifrado activado y desbloqueado</Pill>
             <Button
-              variant="secondary"
+              variant="outline"
               onClick={() => {
                 lock();
                 refresh();
@@ -185,7 +184,7 @@ export function AiProviders() {
               />
             </div>
             <Button
-              variant="secondary"
+              variant="outline"
               disabled={pass.length < 6 || pass !== pass2}
               onClick={async () => {
                 await enableEncryption(pass);
@@ -201,7 +200,7 @@ export function AiProviders() {
       </Card>
 
       {msg && (
-        <p className="rounded-control border-2 border-accent bg-accent-tint px-3 py-2 text-sm text-accent-ink">
+        <p className="rounded-lg border-2 border-brand bg-brand-tint px-3 py-2 text-sm text-brand-ink">
           {msg}
         </p>
       )}
@@ -215,17 +214,15 @@ export function AiProviders() {
           return (
             <Card key={cap} className="space-y-3">
               <Field label={CAP_LABEL[cap]}>
-                <Select
+                <SelectField
+                  aria-label={CAP_LABEL[cap]}
                   value={selectedId}
-                  onChange={(e) => setSelected(cap, e.target.value)}
-                >
-                  {options.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                      {p.keyless ? " · sin key" : ""}
-                    </option>
-                  ))}
-                </Select>
+                  onValueChange={(v) => setSelected(cap, v)}
+                  options={options.map((p) => ({
+                    value: p.id,
+                    label: p.label + (p.keyless ? " · sin key" : ""),
+                  }))}
+                />
               </Field>
               <ProviderEditor
                 providerId={selectedId}
@@ -300,20 +297,21 @@ function ProviderEditor({
       {providerId === "browser" && capability === "tts" && (
         <div className="space-y-2">
           <Field label="Voz del navegador">
-            <Select
-              value={config.model ?? ""}
-              onChange={(e) => onChange({ model: e.target.value })}
-            >
-              <option value="">Automática (según idioma)</option>
-              {voices.map((v) => (
-                <option key={v.voiceURI} value={v.voiceURI}>
-                  {v.name} — {v.lang}
-                </option>
-              ))}
-            </Select>
+            <SelectField
+              aria-label="Voz del navegador"
+              value={config.model || "__auto"}
+              onValueChange={(v) => onChange({ model: v === "__auto" ? "" : v })}
+              options={[
+                { value: "__auto", label: "Automática (según idioma)" },
+                ...voices.map((v) => ({
+                  value: v.voiceURI,
+                  label: `${v.name} — ${v.lang}`,
+                })),
+              ]}
+            />
           </Field>
           <Button
-            variant="secondary"
+            variant="outline"
             onClick={() => {
               cancelBrowserSpeech();
               void speakWithBrowser(
@@ -340,7 +338,7 @@ function ProviderEditor({
                 spellCheck={false}
               />
               <Button
-                variant="secondary"
+                variant="outline"
                 onClick={() => setReveal((v) => !v)}
                 aria-label={reveal ? "Ocultar" : "Mostrar"}
               >
@@ -364,22 +362,18 @@ function ProviderEditor({
 
       {models.length > 0 && (
         <Field label="Modelo">
-          <Select
-            value={config.model ?? models[0]}
-            onChange={(e) => onChange({ model: e.target.value })}
-          >
-            {models.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </Select>
+          <SelectField
+            aria-label="Modelo"
+            value={config.model ?? models[0]!}
+            onValueChange={(v) => onChange({ model: v })}
+            options={models.map((m) => ({ value: m, label: m }))}
+          />
         </Field>
       )}
 
       <div className="flex items-center gap-3">
         <Button
-          variant="secondary"
+          variant="outline"
           onClick={async () => {
             setTest("loading");
             setTest(await testConnection(providerId, config));
@@ -392,7 +386,7 @@ function ProviderEditor({
             className={
               test.ok
                 ? "text-sm font-semibold text-ok"
-                : "text-sm font-semibold text-accent-ink"
+                : "text-sm font-semibold text-brand-ink"
             }
           >
             {test.detail}

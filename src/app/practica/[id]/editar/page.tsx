@@ -6,7 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/db";
 import type { Round } from "@/lib/types";
-import { Button, Card, Eyebrow, Select } from "@/components/ui/primitives";
+import { Button, Card, Eyebrow, SelectField } from "@/components/ui/primitives";
+import { Textarea } from "@/components/ui/textarea";
 import { fmtClock } from "@/lib/util";
 import type { ShowText } from "@/lib/types";
 
@@ -92,19 +93,19 @@ export default function EditPracticePage() {
 
       <Card className="flex items-center gap-3">
         <label className="text-sm font-semibold">Mostrar el texto</label>
-        <Select
+        <SelectField
+          aria-label="Mostrar el texto"
           value={practice.showText}
-          onChange={(e) =>
-            db().practices.update(id, {
-              showText: e.target.value as ShowText,
-            })
+          onValueChange={(v) =>
+            db().practices.update(id, { showText: v as ShowText })
           }
-          className="max-w-[220px]"
-        >
-          <option value="always">Siempre</option>
-          <option value="fade">Escalera</option>
-          <option value="never">Nunca</option>
-        </Select>
+          className="max-w-[240px]"
+          options={[
+            { value: "always", label: "Siempre" },
+            { value: "fade", label: "Escalera" },
+            { value: "never", label: "Nunca" },
+          ]}
+        />
       </Card>
 
       <ol className="space-y-2">
@@ -114,7 +115,7 @@ export default function EditPracticePage() {
           return (
             <li
               key={rid}
-              className="rounded-card border border-line bg-surface p-3"
+              className="rounded-xl border-2 border-line bg-surface p-4"
             >
               <div className="mb-2 flex items-center justify-between">
                 <span className="font-mono text-xs text-ink-soft">
@@ -132,14 +133,14 @@ export default function EditPracticePage() {
                   </IconBtn>
                 </div>
               </div>
-              <textarea
+              <Textarea
+                aria-label={`Texto de la ronda ${i + 1}`}
                 value={texts[rid] ?? ""}
                 onChange={(e) => {
                   setTexts((t) => ({ ...t, [rid]: e.target.value }));
                   setDirty(true);
                 }}
                 rows={2}
-                className="w-full rounded-control border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
               />
             </li>
           );
@@ -147,11 +148,11 @@ export default function EditPracticePage() {
       </ol>
 
       <div className="sticky bottom-20 flex gap-2 sm:bottom-4">
-        <Button variant="primary" onClick={save} disabled={!dirty}>
+        <Button variant="default" onClick={save} disabled={!dirty}>
           Guardar cambios
         </Button>
         <Link href={`/practica/${id}`}>
-          <Button variant="secondary">Descartar</Button>
+          <Button variant="outline">Descartar</Button>
         </Link>
       </div>
     </div>
@@ -171,7 +172,7 @@ function IconBtn({
     <button
       aria-label={label}
       onClick={onClick}
-      className="h-9 w-9 rounded border border-line text-ink-soft hover:bg-panel"
+      className="h-9 min-w-9 rounded-md border-2 border-line-strong px-2 text-sm font-bold text-ink-soft hover:border-ink hover:text-ink"
     >
       {children}
     </button>

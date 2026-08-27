@@ -5,25 +5,25 @@ import {
   Card,
   Eyebrow,
   Field,
-  Select,
+  SelectField,
   TextInput,
 } from "@/components/ui/primitives";
 import { useSettings } from "@/lib/stores/settings";
 import { AiProviders } from "@/components/settings/AiProviders";
 
 const LANGS = [
-  "en-US",
-  "en-GB",
-  "es-ES",
-  "es-419",
-  "fr-FR",
-  "de-DE",
-  "it-IT",
-  "pt-BR",
-  "ja-JP",
-  "ko-KR",
-  "zh-CN",
-];
+  ["en-US", "Inglés (EE. UU.)"],
+  ["en-GB", "Inglés (Reino Unido)"],
+  ["es-ES", "Español (España)"],
+  ["es-419", "Español (Latinoamérica)"],
+  ["fr-FR", "Francés"],
+  ["de-DE", "Alemán"],
+  ["it-IT", "Italiano"],
+  ["pt-BR", "Portugués (Brasil)"],
+  ["ja-JP", "Japonés"],
+  ["ko-KR", "Coreano"],
+  ["zh-CN", "Chino (mandarín)"],
+] as const;
 
 export default function SettingsPage() {
   const s = useSettings();
@@ -40,34 +40,32 @@ export default function SettingsPage() {
 
       <Card className="grid gap-4 sm:grid-cols-2">
         <Field label="Idioma objetivo">
-          <Select
+          <SelectField
+            aria-label="Idioma objetivo"
             value={s.targetLanguage}
-            onChange={(e) => s.set("targetLanguage", e.target.value)}
-          >
-            {LANGS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </Select>
+            onValueChange={(v) => s.set("targetLanguage", v)}
+            options={LANGS.map(([value, label]) => ({ value, label }))}
+          />
         </Field>
-        <Field label="Dialecto para el IPA" hint="Se usará al mostrar la transcripción fonética.">
+        <Field
+          label="Dialecto para el IPA"
+          hint="Se usará al mostrar la transcripción fonética."
+        >
           <TextInput
             value={s.ipaDialect}
             onChange={(e) => s.set("ipaDialect", e.target.value)}
           />
         </Field>
         <Field label="Velocidad por defecto">
-          <Select
+          <SelectField
+            aria-label="Velocidad por defecto"
             value={String(s.defaultRate)}
-            onChange={(e) => s.set("defaultRate", Number(e.target.value))}
-          >
-            {[0.7, 0.85, 1, 1.15].map((r) => (
-              <option key={r} value={r}>
-                {r}×
-              </option>
-            ))}
-          </Select>
+            onValueChange={(v) => s.set("defaultRate", Number(v))}
+            options={[0.7, 0.85, 1, 1.15].map((r) => ({
+              value: String(r),
+              label: `${r}×`,
+            }))}
+          />
         </Field>
         <Field label="Vueltas por práctica">
           <TextInput
@@ -88,71 +86,65 @@ export default function SettingsPage() {
           />
         </Field>
         <Field label="Escalera de texto por defecto">
-          <Select
+          <SelectField
+            aria-label="Escalera de texto"
             value={s.showText}
-            onChange={(e) =>
-              s.set("showText", e.target.value as typeof s.showText)
-            }
-          >
-            <option value="always">Siempre visible</option>
-            <option value="fade">Escalera (se atenúa)</option>
-            <option value="never">Nunca</option>
-          </Select>
+            onValueChange={(v) => s.set("showText", v as typeof s.showText)}
+            options={[
+              { value: "always", label: "Siempre visible" },
+              { value: "fade", label: "Escalera (se atenúa)" },
+              { value: "never", label: "Nunca" },
+            ]}
+          />
         </Field>
       </Card>
 
       <Card className="grid gap-4 sm:grid-cols-2">
         <Field label="Tema">
-          <Select
+          <SelectField
+            aria-label="Tema"
             value={s.theme}
-            onChange={(e) => s.set("theme", e.target.value as typeof s.theme)}
-          >
-            <option value="system">Del sistema</option>
-            <option value="light">Claro</option>
-            <option value="dark">Oscuro</option>
-          </Select>
+            onValueChange={(v) => s.set("theme", v as typeof s.theme)}
+            options={[
+              { value: "system", label: "Del sistema" },
+              { value: "light", label: "Claro" },
+              { value: "dark", label: "Oscuro" },
+            ]}
+          />
         </Field>
         <Field label="Tamaño de letra">
-          <Select
+          <SelectField
+            aria-label="Tamaño de letra"
             value={String(s.fontSize)}
-            onChange={(e) => s.set("fontSize", Number(e.target.value))}
-          >
-            {[14, 15, 16, 18, 20].map((px) => (
-              <option key={px} value={px}>
-                {px} px
-              </option>
-            ))}
-          </Select>
+            onValueChange={(v) => s.set("fontSize", Number(v))}
+            options={[14, 15, 16, 18, 20].map((px) => ({
+              value: String(px),
+              label: `${px} px`,
+            }))}
+          />
         </Field>
         <Field
           label="Auriculares"
           hint="Con auriculares se desactiva la cancelación de eco al grabar."
         >
-          <Select
+          <SelectField
+            aria-label="Auriculares"
             value={
-              s.usesHeadphones === null
-                ? "ask"
-                : s.usesHeadphones
-                  ? "yes"
-                  : "no"
+              s.usesHeadphones === null ? "ask" : s.usesHeadphones ? "yes" : "no"
             }
-            onChange={(e) =>
-              s.set(
-                "usesHeadphones",
-                e.target.value === "ask"
-                  ? null
-                  : e.target.value === "yes",
-              )
+            onValueChange={(v) =>
+              s.set("usesHeadphones", v === "ask" ? null : v === "yes")
             }
-          >
-            <option value="ask">Preguntar</option>
-            <option value="yes">Sí, siempre</option>
-            <option value="no">No</option>
-          </Select>
+            options={[
+              { value: "ask", label: "Preguntar" },
+              { value: "yes", label: "Sí, siempre" },
+              { value: "no", label: "No" },
+            ]}
+          />
         </Field>
         <Field
           label="Compensación de latencia del micro (ms)"
-          hint="Se calibra automáticamente en la fase de análisis. Vacío = automático."
+          hint="Vacío = automático según el dispositivo."
         >
           <TextInput
             type="number"

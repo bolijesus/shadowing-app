@@ -19,8 +19,9 @@ import {
 import { ensureAudioContext } from "@/lib/audio/context";
 import { resolveMediaSource, requestHandlePermission } from "@/lib/media/source";
 import { mediaFileCache } from "@/lib/media/fileCache";
-import { getOrBuildPeaks } from "@/lib/audio/peaks";
+import { computePeaksFromBlob, getOrBuildPeaks } from "@/lib/audio/peaks";
 import { FileTooLargeToDecode } from "@/lib/audio/decode";
+import { speakWithBrowser, cancelBrowserSpeech } from "@/lib/tts/browser";
 import type { Peaks } from "@/workers/audio-dsp.worker";
 import { putBlob } from "@/lib/storage/blobStore";
 import { saveTake } from "@/lib/db/repositories";
@@ -91,6 +92,7 @@ export default function PracticePlayerPage() {
   const [takes, setTakes] = React.useState<Record<string, { url: string; blob: Blob; mime: string; dur: number }>>(
     {},
   );
+  const [youPeaks, setYouPeaks] = React.useState<Peaks | null>(null);
 
   const [showHeadphones, setShowHeadphones] = React.useState(false);
   const [showMicExplain, setShowMicExplain] = React.useState(false);
@@ -212,6 +214,7 @@ export default function PracticePlayerPage() {
     playerRef.current.setLoop(loop);
     setPhase("listen");
     setRecPct(0);
+    setYouPeaks(null);
   }, [round, loop]);
 
   /* --- primera visita: ¿auriculares? --- */
@@ -300,6 +303,9 @@ export default function PracticePlayerPage() {
     });
     setPhase("compare");
     setRecPct(1);
+    computePeaksFromBlob(result.blob)
+      .then(setYouPeaks)
+      .catch(() => setYouPeaks(null));
   }
 
   function playMine() {
@@ -380,19 +386,19 @@ export default function PracticePlayerPage() {
         : 1;
 
   return (
-    <div className="flex min-h-dvh flex-col bg-bg">
-      <header className="flex items-center justify-between border-b border-line px-4 py-3">
+    <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col bg-bg">
+      <header className="flex items-center justify-between border-b-2 border-line bg-surface px-4 py-3">
         <button
           onClick={() => router.push("/")}
-          className="text-sm font-semibold text-ink-soft hover:text-ink"
+          className="rounded-control border-2 border-line-strong px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
         >
           ✕ Salir
         </button>
-        <p className="text-sm font-semibold">
-          {practice.title} · Ronda {idx + 1} de {total}
+        <p className="text-sm font-bold">
+          Ronda {idx + 1} de {total}
         </p>
-        <span className="text-xs text-ink-soft">
-          {Object.keys(takes).length} de {total} tomas
+        <span className="text-xs font-semibold text-ink-soft">
+          {Object.keys(takes).length}/{total} tomas
         </span>
       </header>
 
@@ -406,7 +412,7 @@ export default function PracticePlayerPage() {
       </div>
 
       {sourceIssue && (
-        <div className="mx-4 mt-3 rounded-control border border-accent bg-accent-tint px-4 py-3 text-sm text-accent">
+        <div className="mx-4 mt-3 rounded-control border-2 border-accent bg-accent-tint px-4 py-3 text-sm text-accent-ink">
           {sourceIssue.kind === "permission" ? (
             <div className="space-y-2">
               <p>
@@ -452,19 +458,35 @@ export default function PracticePlayerPage() {
       )}
 
       <main className="flex flex-1 flex-col gap-5 px-4 py-6">
-        <div
-          className="rounded-card bg-panel p-5 text-center transition-opacity"
-          style={{ opacity: textOpacity || 0.001 }}
-          aria-hidden={textOpacity === 0}
-        >
-          <p className="text-[21px] font-bold leading-snug text-ink">
-            {round?.text || (
-              <span className="text-ink-soft">(sin texto para esta ronda)</span>
-            )}
-          </p>
+        <div>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="eyebrow">{practice.title}</p>
+              <h1 className="h-display mt-1 text-2xl">Imita al modelo</h1>
+            </div>
+            <button
+              onClick={() => setTextHidden((v) => !v)}
+              className="shrink-0 rounded-control border-2 border-line-strong bg-surface px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
+            >
+              {textOpacity === 0 ? "Mostrar texto" : "Ocultar texto"}
+            </button>
+          </div>
+          <div
+            className="mt-3 rounded-card bg-panel p-5 transition-opacity"
+            style={{ opacity: textOpacity || 0.001 }}
+            aria-hidden={textOpacity === 0}
+          >
+            <p className="text-[22px] font-extrabold leading-snug text-ink">
+              {round?.text || (
+                <span className="text-ink-soft">
+                  (sin texto para esta ronda)
+                </span>
+              )}
+            </p>
+          </div>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           <Waveform
             peaks={roundPeaks}
             progress={modelPos}
@@ -476,22 +498,20 @@ export default function PracticePlayerPage() {
                   : "reference"
             }
             label="Modelo"
-            height={110}
+            height={120}
           />
-          {peaksNote && (
-            <p className="text-xs text-ink-soft">{peaksNote}</p>
+          {(phase === "compare" || youPeaks) && (
+            <Waveform peaks={youPeaks} progress={0} label="Tú" height={96} />
           )}
-          {phase === "recording" && (
-            <div className="h-2 w-full overflow-hidden rounded-full bg-panel">
-              <div
-                className="h-full bg-accent transition-[width] duration-75"
-                style={{ width: `${Math.round(recPct * 100)}%` }}
-              />
-            </div>
-          )}
+          {peaksNote && <p className="text-xs text-ink-soft">{peaksNote}</p>}
+          {phase === "recording" && <DotMeter value={recPct} />}
         </div>
 
         <div className="mt-auto space-y-3">
+          {phase === "countdown" && (
+            <Countdown onDone={() => void beginRecording()} />
+          )}
+
           {phase === "listen" && (
             <>
               <div className="grid grid-cols-2 gap-2">
@@ -500,6 +520,7 @@ export default function PracticePlayerPage() {
                   onClick={() =>
                     playerRef.current?.playing ? pauseModel() : playModel(true)
                   }
+                  disabled={!file}
                 >
                   {playerRef.current?.playing ? "Pausar" : "Escuchar modelo"}
                 </Button>
@@ -510,8 +531,27 @@ export default function PracticePlayerPage() {
                 >
                   {loop ? "Bucle: activado" : "Bucle A–B"}
                 </Button>
+                <Button
+                  variant="secondary"
+                  className="col-span-2"
+                  onClick={() => {
+                    cancelBrowserSpeech();
+                    if (round?.text)
+                      void speakWithBrowser(round.text, {
+                        lang: media?.language,
+                      }).catch(() => {});
+                  }}
+                  disabled={!round?.text}
+                >
+                  Escuchar con voz del navegador
+                </Button>
               </div>
-              <Button variant="record" full className="h-16 text-lg" onClick={startCountdown}>
+              <Button
+                variant="record"
+                full
+                className="h-16 text-lg"
+                onClick={startCountdown}
+              >
                 ● Grabar mi voz
               </Button>
             </>
@@ -578,13 +618,6 @@ export default function PracticePlayerPage() {
           </div>
         </div>
       </main>
-
-      {phase === "countdown" && (
-        <Countdown
-          label="Sigue el modelo"
-          onDone={() => void beginRecording()}
-        />
-      )}
 
       <Dialog
         open={showHeadphones}
@@ -667,6 +700,32 @@ function CenterNote({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh items-center justify-center p-8 text-center text-ink-soft">
       {children}
+    </div>
+  );
+}
+
+/** Medidor de progreso de grabación por puntos (§7.A). */
+function DotMeter({ value }: { value: number }) {
+  const dots = 30;
+  const filled = Math.round(value * dots);
+  return (
+    <div className="rounded-control border-2 border-ok/40 bg-ok/5 px-3 py-3">
+      <div className="mb-1.5 flex items-center justify-between text-xs font-bold">
+        <span className="text-accent-ink">Grabando</span>
+        <span className="text-ink-soft">{Math.round(value * 100)}%</span>
+      </div>
+      <div className="flex items-end gap-1">
+        {Array.from({ length: dots }).map((_, i) => (
+          <span
+            key={i}
+            className={
+              i < filled
+                ? "h-3 w-2 rounded-sm bg-ok"
+                : "h-2 w-2 self-center rounded-full bg-line-strong/50"
+            }
+          />
+        ))}
+      </div>
     </div>
   );
 }

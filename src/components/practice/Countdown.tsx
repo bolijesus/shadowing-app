@@ -2,10 +2,10 @@
 
 import * as React from "react";
 
-/** Cuenta atrás 3 · 2 · 1 antes de grabar (§7.A). */
+/** Cuenta atrás 3 · 2 · 1 antes de grabar (§7.A). Tarjeta oscura en el flujo. */
 export function Countdown({
   from = 3,
-  label = "Prepárate",
+  label = "Sigue la línea del modelo",
   onDone,
 }: {
   from?: number;
@@ -25,12 +25,12 @@ export function Countdown({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-bg/90"
+      className="flex flex-col items-center justify-center gap-1 rounded-card bg-ink py-12 text-white"
       role="alertdialog"
-      aria-label={`${label}. ${n}`}
+      aria-label={`${label}. ${n > 0 ? n : "ya"}`}
     >
-      <p className="eyebrow">{label}</p>
-      <p className="h-display text-8xl text-accent">{n > 0 ? n : "¡Ya!"}</p>
+      <p className="h-display text-7xl">{n > 0 ? n : "¡Ya!"}</p>
+      <p className="text-sm font-semibold text-white/70">{label}</p>
     </div>
   );
 }

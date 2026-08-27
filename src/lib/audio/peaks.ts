@@ -55,6 +55,20 @@ export interface BuildPeaksArgs {
   buckets?: number;
 }
 
+/** Calcula picos de un blob completo (p. ej. una toma) sin cachear. */
+export async function computePeaksFromBlob(
+  blob: Blob,
+  buckets = 800,
+): Promise<Peaks> {
+  const { pcm, sampleRate } = await decodeRange(blob, 0, Number.MAX_SAFE_INTEGER);
+  const t = pcm.slice(0);
+  return dsp().computePeaks(
+    Comlink.transfer(t, [t.buffer]),
+    sampleRate,
+    buckets,
+  );
+}
+
 /** Devuelve picos desde OPFS si existen; si no, los calcula y cachea. */
 export async function getOrBuildPeaks(args: BuildPeaksArgs): Promise<Peaks> {
   const path = peaksPath(args.clipId);

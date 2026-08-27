@@ -2,19 +2,22 @@
 
 /*
   Sistema de diseño — editorial, limpio, tipografía pesada, un acento rojo,
-  cifras de datos en azul. Tokens del prompt §12.
+  cifras de datos en azul. Tokens del prompt §12, con contraste reforzado:
+  bordes de controles bien visibles para que nada se pierda sobre el crema.
 */
 :root {
   --bg: #fdfaf5; /* crema cálido de fondo */
   --surface: #ffffff; /* tarjetas */
-  --panel: #efebe5; /* paneles hundidos: texto de la frase, ondas */
-  --ink: #16161a; /* texto principal y botón primario */
-  --ink-soft: #6b6862;
+  --panel: #ece7dd; /* paneles hundidos: texto de la frase, ondas */
+  --ink: #14141a; /* texto principal y botón primario */
+  --ink-soft: #5f5c55; /* texto secundario (contraste AA sobre crema) */
   --accent: #f5402c; /* rojo: eyebrows, grabación, progreso */
-  --accent-tint: #fdecea; /* fondo rojo muy claro para botón de grabar */
+  --accent-ink: #d92d1a; /* rojo para texto pequeño (más contraste) */
+  --accent-tint: #fdeae7; /* fondo rojo muy claro para botón de grabar */
   --data: #2438e8; /* azul: solo para cifras de puntuación */
-  --ok: #1e9e6a;
-  --line: #e4ded6;
+  --ok: #158a5b;
+  --line: #d9d1c2; /* divisores */
+  --line-strong: #a69c86; /* bordes de controles interactivos */
 
   --radius-card: 14px;
   --radius-control: 10px;
@@ -24,17 +27,19 @@
   --font-body: var(--font-display);
 }
 
-[data-theme="dark"] {
-  --bg: #16161a;
-  --surface: #1f1f24;
-  --panel: #26262c;
-  --ink: #f4f1ea;
-  --ink-soft: #a8a49b;
-  --accent: #ff5943;
+:root[data-theme="dark"] {
+  --bg: #131317;
+  --surface: #1e1e23;
+  --panel: #292930;
+  --ink: #f5f2ea;
+  --ink-soft: #b3aea3;
+  --accent: #ff5a44;
+  --accent-ink: #ff7663;
   --accent-tint: #3a201c;
-  --data: #7c8cff;
-  --ok: #3fbf88;
-  --line: #34343c;
+  --data: #8b98ff;
+  --ok: #46c58c;
+  --line: #35353d;
+  --line-strong: #565660;
 }
 
 @theme inline {
@@ -44,10 +49,12 @@
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
   --color-accent-tint: var(--accent-tint);
   --color-data: var(--data);
   --color-ok: var(--ok);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --font-display: var(--font-display);
   --font-body: var(--font-body);
   --radius-card: var(--radius-card);
@@ -70,7 +77,7 @@ body {
 
 /* Foco visible por teclado en todo lo accionable (§1.8). */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 3px solid var(--data);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -90,9 +97,9 @@ body {
 .eyebrow {
   text-transform: uppercase;
   font-size: 11px;
-  letter-spacing: 0.08em;
-  font-weight: 700;
-  color: var(--accent);
+  letter-spacing: 0.09em;
+  font-weight: 800;
+  color: var(--accent-ink);
 }
 
 .h-display {

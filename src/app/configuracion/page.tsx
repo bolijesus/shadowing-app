@@ -9,6 +9,7 @@ import {
   TextInput,
 } from "@/components/ui/primitives";
 import { useSettings } from "@/lib/stores/settings";
+import { AiProviders } from "@/components/settings/AiProviders";
 
 const LANGS = [
   "en-US",
@@ -166,14 +167,7 @@ export default function SettingsPage() {
         </Field>
       </Card>
 
-      <Card>
-        <Eyebrow>Proveedores de IA</Eyebrow>
-        <p className="mt-2 text-sm text-ink-soft">
-          La configuración de TTS, ASR y LLM (con cifrado opcional de las claves)
-          llega en la fase de IA. De momento la app funciona con la voz del
-          navegador y sin reconocimiento de voz.
-        </p>
-      </Card>
+      <AiProviders />
     </div>
   );
 }

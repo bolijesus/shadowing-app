@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+/*
+  Sistema de diseño — editorial, limpio, tipografía pesada, un acento rojo,
+  cifras de datos en azul. Tokens del prompt §12.
+*/
+:root {
+  --bg: #fdfaf5; /* crema cálido de fondo */
+  --surface: #ffffff; /* tarjetas */
+  --panel: #efebe5; /* paneles hundidos: texto de la frase, ondas */
+  --ink: #16161a; /* texto principal y botón primario */
+  --ink-soft: #6b6862;
+  --accent: #f5402c; /* rojo: eyebrows, grabación, progreso */
+  --accent-tint: #fdecea; /* fondo rojo muy claro para botón de grabar */
+  --data: #2438e8; /* azul: solo para cifras de puntuación */
+  --ok: #1e9e6a;
+  --line: #e4ded6;
+
+  --radius-card: 14px;
+  --radius-control: 10px;
+
+  --font-display: "Inter Tight", "Inter", system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: var(--font-display);
+}
+
+[data-theme="dark"] {
+  --bg: #16161a;
+  --surface: #1f1f24;
+  --panel: #26262c;
+  --ink: #f4f1ea;
+  --ink-soft: #a8a49b;
+  --accent: #ff5943;
+  --accent-tint: #3a201c;
+  --data: #7c8cff;
+  --ok: #3fbf88;
+  --line: #34343c;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-panel: var(--panel);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-accent: var(--accent);
+  --color-accent-tint: var(--accent-tint);
+  --color-data: var(--data);
+  --color-ok: var(--ok);
+  --color-line: var(--line);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --radius-card: var(--radius-card);
+  --radius-control: var(--radius-control);
+}
+
+html {
+  height: 100%;
+  font-size: var(--app-font-size, 16px);
+}
+
+body {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Foco visible por teclado en todo lo accionable (§1.8). */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Eyebrow: mayúsculas, 11px, tracking amplio, en rojo. */
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.h-display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}

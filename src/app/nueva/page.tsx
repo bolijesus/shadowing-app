@@ -1,0 +1,577 @@
+"use client";
+
+import * as React from "react";
+import { useRouter } from "next/navigation";
+import {
+  Button,
+  Card,
+  Eyebrow,
+  Field,
+  Select,
+  TextInput,
+} from "@/components/ui/primitives";
+import { RangeSelector } from "@/components/range/RangeSelector";
+import {
+  ACCEPT_ATTR,
+  fsAccessSupported,
+  importToOpfs,
+  pickWithFsAccess,
+} from "@/lib/media/source";
+import { probeMedia } from "@/lib/media/probe";
+import { parseSubtitles } from "@/lib/subtitles/parse";
+import { segmentFromCues } from "@/lib/subtitles/segmentation";
+import {
+  createClip,
+  createMedia,
+  createPractice,
+  createRounds,
+  createTranscript,
+} from "@/lib/db/repositories";
+import type { Cue, Source } from "@/lib/types";
+import { mediaFileCache } from "@/lib/media/fileCache";
+import { fmtBytes, fmtClock, uid } from "@/lib/util";
+
+type Step = "source" | "file" | "subs" | "range" | "rounds";
+type FileMode = "handle" | "session" | "opfs";
+
+const LANGS = [
+  ["en-US", "Inglés (EE. UU.)"],
+  ["en-GB", "Inglés (Reino Unido)"],
+  ["es-ES", "Español (España)"],
+  ["fr-FR", "Francés"],
+  ["de-DE", "Alemán"],
+  ["it-IT", "Italiano"],
+  ["pt-BR", "Portugués (Brasil)"],
+  ["ja-JP", "Japonés"],
+] as const;
+
+export default function NuevaPracticaPage() {
+  const router = useRouter();
+  const [step, setStep] = React.useState<Step>("source");
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const [file, setFile] = React.useState<File | null>(null);
+  const [fileMode, setFileMode] = React.useState<FileMode>("session");
+  const [handleId, setHandleId] = React.useState<string | undefined>();
+  const [pendingFile, setPendingFile] = React.useState<File | null>(null);
+
+  const [title, setTitle] = React.useState("");
+  const [language, setLanguage] = React.useState<string>("en-US");
+  const [duration, setDuration] = React.useState(0);
+  const [hasVideo, setHasVideo] = React.useState(false);
+
+  const [cues, setCues] = React.useState<Cue[]>([]);
+  const [manualText, setManualText] = React.useState("");
+
+  const [range, setRange] = React.useState<{ start: number; end: number }>({
+    start: 0,
+    end: 0,
+  });
+  const [showText, setShowText] = React.useState<"always" | "fade" | "never">(
+    "fade",
+  );
+
+  const previewRef = React.useRef<HTMLMediaElement | null>(null);
+
+  const onFileChosen = React.useCallback(
+    async (f: File, mode: FileMode, hId?: string) => {
+      setError(null);
+      setBusy("Leyendo el medio…");
+      try {
+        const probe = await probeMedia(f, f.name);
+        setFile(f);
+        setFileMode(mode);
+        setHandleId(hId);
+        setDuration(probe.durationSec);
+        setHasVideo(probe.hasVideo);
+        setTitle((t) => t || f.name.replace(/\.[^.]+$/, ""));
+        setRange({ start: 0, end: Math.min(probe.durationSec, 40) || 0 });
+        setStep("subs");
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : "No se pudo leer el archivo.",
+        );
+      } finally {
+        setBusy(null);
+      }
+    },
+    [],
+  );
+
+  async function chooseWithFsAccess() {
+    setError(null);
+    try {
+      const res = await pickWithFsAccess();
+      if (res) await onFileChosen(res.file, "handle", res.handleId);
+    } catch (e) {
+      if ((e as DOMException)?.name !== "AbortError") {
+        setError("No se pudo abrir el selector de archivos.");
+      }
+    }
+  }
+
+  function onInputFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) setPendingFile(f);
+  }
+
+  async function confirmPendingFile(mode: "session" | "opfs") {
+    if (!pendingFile) return;
+    const f = pendingFile;
+    setPendingFile(null);
+    await onFileChosen(f, mode);
+  }
+
+  async function onSubsFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const text = await f.text();
+    const parsed = parseSubtitles(f.name, text);
+    if (!parsed.length) {
+      setError(
+        "No se reconocieron subtítulos en ese archivo. Prueba con .srt o .vtt, o escríbelos a mano.",
+      );
+      return;
+    }
+    setError(null);
+    setCues(parsed);
+    setRange({
+      start: parsed[0]!.start,
+      end: Math.min(duration || parsed[parsed.length - 1]!.end, parsed[0]!.start + 60),
+    });
+  }
+
+  function applyManualText() {
+    const lines = manualText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (!lines.length) return;
+    const span = (range.end - range.start || duration) / lines.length;
+    const made: Cue[] = lines.map((text, i) => ({
+      start: range.start + i * span,
+      end: range.start + (i + 1) * span,
+      text,
+    }));
+    setCues(made);
+  }
+
+  const seeds = React.useMemo(
+    () =>
+      cues.length
+        ? segmentFromCues(cues, range.start, range.end)
+        : [],
+    [cues, range.start, range.end],
+  );
+
+  async function finish() {
+    if (!file) return;
+    setBusy("Creando la práctica…");
+    setError(null);
+    try {
+      const mediaId = uid("m");
+      let source: Source;
+      if (fileMode === "opfs") {
+        const { path } = await importToOpfs(file, file.name, mediaId);
+        source = {
+          kind: "opfs",
+          path,
+          mime: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+        };
+      } else {
+        source = {
+          kind: "local-file",
+          handleId: fileMode === "handle" ? handleId : undefined,
+          fileName: file.name,
+          mime: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+        };
+      }
+
+      const media = await createMedia({
+        title: title || file.name,
+        language,
+        source,
+        durationSec: duration,
+        hasVideo,
+      });
+
+      if (cues.length) {
+        await createTranscript(media.id, "file", cues);
+      }
+
+      const clip = await createClip(
+        media.id,
+        range.start,
+        range.end,
+        title || "Recorte",
+      );
+
+      const usableSeeds = seeds.length
+        ? seeds
+        : [
+            {
+              index: 0,
+              startSec: range.start,
+              endSec: range.end,
+              text: manualText.trim(),
+            },
+          ];
+      const rounds = await createRounds(clip.id, usableSeeds);
+
+      const practice = await createPractice({
+        title: title || "Práctica",
+        clipId: clip.id,
+        mode: "shadowing-echo",
+        roundIds: rounds.map((r) => r.id),
+        showText,
+      });
+
+      mediaFileCache.set(media.id, file);
+      router.push(`/practica/${practice.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo crear la práctica.");
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-2 text-xs font-semibold text-ink-soft">
+        {(["source", "file", "subs", "range", "rounds"] as Step[]).map((s, i) => (
+          <span
+            key={s}
+            className={
+              step === s ? "text-accent" : i < STEP_ORDER[step] ? "text-ink" : ""
+            }
+          >
+            {i + 1}. {STEP_LABEL[s]}
+            {i < 4 && <span className="mx-1 text-line">·</span>}
+          </span>
+        ))}
+      </div>
+
+      {error && (
+        <div className="rounded-control border border-accent bg-accent-tint px-4 py-3 text-sm text-accent">
+          {error}
+        </div>
+      )}
+      {busy && (
+        <div className="rounded-control border border-line bg-panel px-4 py-3 text-sm text-ink-soft">
+          {busy}
+        </div>
+      )}
+
+      {step === "source" && (
+        <section>
+          <Eyebrow>Nueva práctica</Eyebrow>
+          <h1 className="h-display mt-1 text-2xl">¿De dónde sale el contenido?</h1>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => setStep("file")}
+              className="rounded-card border border-line bg-surface p-5 text-left hover:bg-panel"
+            >
+              <p className="font-display text-lg font-bold">
+                Archivo del dispositivo
+              </p>
+              <p className="mt-1 text-sm text-ink-soft">
+                Audio o vídeo local. El camino que mejor funciona: sin copiar
+                bytes.
+              </p>
+            </button>
+            {[
+              ["YouTube", "Reproducción y ejercicios de texto."],
+              ["Texto con voz IA", "Genera las voces con TTS."],
+              ["Pegar guion", "Un guion se divide en frases."],
+            ].map(([t, d]) => (
+              <div
+                key={t}
+                className="rounded-card border border-dashed border-line p-5 text-left opacity-60"
+              >
+                <p className="font-display text-lg font-bold">{t}</p>
+                <p className="mt-1 text-sm text-ink-soft">{d}</p>
+                <p className="mt-2 text-xs font-semibold text-ink-soft">
+                  Próximamente
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {step === "file" && (
+        <section className="space-y-4">
+          <Eyebrow>Paso 2 · Archivo</Eyebrow>
+          <h1 className="h-display text-2xl">Elige el audio o el vídeo</h1>
+          <p className="text-sm text-ink-soft">
+            Formatos: mp3, m4a, wav, ogg, mp4, webm, mov.
+          </p>
+
+          {fsAccessSupported() ? (
+            <div className="space-y-3">
+              <Button variant="primary" full onClick={chooseWithFsAccess}>
+                Seleccionar archivo
+              </Button>
+              <p className="text-xs text-ink-soft">
+                Tu navegador recuerda el archivo para próximas sesiones sin
+                copiarlo.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <label className="block">
+                <input
+                  type="file"
+                  accept={ACCEPT_ATTR}
+                  onChange={onInputFile}
+                  className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-control file:border-0 file:bg-ink file:px-4 file:py-2 file:font-semibold file:text-white"
+                />
+              </label>
+              {pendingFile && (
+                <Card className="space-y-3">
+                  <p className="text-sm">
+                    <strong className="text-ink">{pendingFile.name}</strong> ·{" "}
+                    {fmtBytes(pendingFile.size)}
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => confirmPendingFile("session")}
+                    >
+                      Usar solo en esta sesión
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={() => confirmPendingFile("opfs")}
+                    >
+                      Importar a la app ({fmtBytes(pendingFile.size)})
+                    </Button>
+                  </div>
+                  <p className="text-xs text-ink-soft">
+                    &ldquo;Solo en esta sesión&rdquo; no ocupa espacio, pero
+                    tendrás que volver a seleccionar el archivo la próxima vez.
+                  </p>
+                </Card>
+              )}
+            </div>
+          )}
+          <Button variant="ghost" onClick={() => setStep("source")}>
+            ← Volver
+          </Button>
+        </section>
+      )}
+
+      {step === "subs" && (
+        <section className="space-y-4">
+          <Eyebrow>Paso 3 · Subtítulos</Eyebrow>
+          <h1 className="h-display text-2xl">Texto de referencia</h1>
+
+          <Card className="space-y-3">
+            <Field label="Subir archivo de subtítulos" hint=".srt, .vtt o .ass básico">
+              <input
+                type="file"
+                accept=".srt,.vtt,.ass,.ssa,text/vtt"
+                onChange={onSubsFile}
+                className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-control file:border-0 file:bg-ink file:px-4 file:py-2 file:font-semibold file:text-white"
+              />
+            </Field>
+            {cues.length > 0 && (
+              <p className="text-sm text-ok">
+                {cues.length} líneas reconocidas.
+              </p>
+            )}
+          </Card>
+
+          <Card className="space-y-3">
+            <Field
+              label="…o escríbelo a mano"
+              hint="Una frase por línea. Se reparten en el rango elegido."
+            >
+              <textarea
+                value={manualText}
+                onChange={(e) => setManualText(e.target.value)}
+                rows={4}
+                className="w-full rounded-control border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-ink"
+              />
+            </Field>
+            <Button variant="secondary" onClick={applyManualText}>
+              Usar este texto
+            </Button>
+          </Card>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Título">
+              <TextInput
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </Field>
+            <Field label="Idioma del contenido">
+              <Select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+              >
+                {LANGS.map(([code, name]) => (
+                  <option key={code} value={code}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+
+          <div className="flex justify-between">
+            <Button variant="ghost" onClick={() => setStep("file")}>
+              ← Volver
+            </Button>
+            <Button variant="primary" onClick={() => setStep("range")}>
+              Continuar
+            </Button>
+          </div>
+          <p className="text-xs text-ink-soft">
+            Sin subtítulos también puedes continuar: la práctica usará una sola
+            ronda con el rango completo.
+          </p>
+        </section>
+      )}
+
+      {step === "range" && (
+        <section className="space-y-4">
+          <Eyebrow>Paso 4 · Rango</Eyebrow>
+          <h1 className="h-display text-2xl">Recorta lo que vas a practicar</h1>
+          <p className="text-sm text-ink-soft">
+            El recorte es virtual: marca un tramo del medio original sin ocupar
+            espacio.
+          </p>
+
+          <RangeSelector
+            duration={duration || range.end}
+            start={range.start}
+            end={range.end}
+            onChange={(s, e) => setRange({ start: s, end: e })}
+            onPreview={async () => {
+              const el = previewRef.current;
+              if (!el || !file) return;
+              if (!el.src) el.src = URL.createObjectURL(file);
+              el.currentTime = range.start;
+              await el.play();
+              const stop = () => {
+                if (el.currentTime >= range.end) {
+                  el.pause();
+                  el.removeEventListener("timeupdate", stop);
+                }
+              };
+              el.addEventListener("timeupdate", stop);
+            }}
+          />
+          <audio ref={previewRef as React.RefObject<HTMLAudioElement>} hidden />
+
+          {cues.length > 0 && (
+            <Button
+              variant="secondary"
+              onClick={() =>
+                setRange({
+                  start: cues[0]!.start,
+                  end: cues[cues.length - 1]!.end,
+                })
+              }
+            >
+              Usar el rango de todos los subtítulos
+            </Button>
+          )}
+
+          <div className="flex justify-between">
+            <Button variant="ghost" onClick={() => setStep("subs")}>
+              ← Volver
+            </Button>
+            <Button variant="primary" onClick={() => setStep("rounds")}>
+              Continuar
+            </Button>
+          </div>
+        </section>
+      )}
+
+      {step === "rounds" && (
+        <section className="space-y-4">
+          <Eyebrow>Paso 5 · Rondas y actividad</Eyebrow>
+          <h1 className="h-display text-2xl">
+            {seeds.length || 1} rondas de práctica
+          </h1>
+
+          <ol className="space-y-2">
+            {(seeds.length
+              ? seeds
+              : [
+                  {
+                    index: 0,
+                    startSec: range.start,
+                    endSec: range.end,
+                    text: manualText.trim() || "(rango completo, sin texto)",
+                  },
+                ]
+            ).map((s) => (
+              <li
+                key={s.index}
+                className="rounded-control border border-line bg-surface px-3 py-2 text-sm"
+              >
+                <span className="mr-2 font-mono text-xs text-ink-soft">
+                  {fmtClock(s.startSec)}–{fmtClock(s.endSec)}
+                </span>
+                {s.text || <span className="text-ink-soft">(sin texto)</span>}
+              </li>
+            ))}
+          </ol>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Actividad">
+              <Select value="shadowing-echo" disabled>
+                <option value="shadowing-echo">Shadowing · Eco</option>
+              </Select>
+            </Field>
+            <Field
+              label="Mostrar el texto"
+              hint="&ldquo;Escalera&rdquo;: se atenúa y luego se oculta por vuelta."
+            >
+              <Select
+                value={showText}
+                onChange={(e) =>
+                  setShowText(e.target.value as "always" | "fade" | "never")
+                }
+              >
+                <option value="always">Siempre</option>
+                <option value="fade">Escalera (recomendado)</option>
+                <option value="never">Nunca</option>
+              </Select>
+            </Field>
+          </div>
+
+          <div className="flex justify-between">
+            <Button variant="ghost" onClick={() => setStep("range")}>
+              ← Volver
+            </Button>
+            <Button variant="primary" onClick={finish} disabled={!!busy}>
+              Crear y empezar
+            </Button>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+const STEP_ORDER: Record<Step, number> = {
+  source: 0,
+  file: 1,
+  subs: 2,
+  range: 3,
+  rounds: 4,
+};
+const STEP_LABEL: Record<Step, string> = {
+  source: "Origen",
+  file: "Archivo",
+  subs: "Subtítulos",
+  range: "Rango",
+  rounds: "Rondas",
+};

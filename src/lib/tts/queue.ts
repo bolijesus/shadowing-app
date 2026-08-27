@@ -2,8 +2,9 @@
 
 import { db } from "@/lib/db/db";
 import type { Round } from "@/lib/types";
-import { getKeystore } from "@/lib/crypto/keystore";
+import { getKeystore, modelFor } from "@/lib/crypto/keystore";
 import { synthesizeCached } from "./cache";
+import { ttsProvider } from "./providers";
 import { styleById, TtsError, type TtsProviderId, type TtsRequest } from "./types";
 
 /** Estado por ronda mostrado en el editor (§4.3). */
@@ -16,15 +17,22 @@ export interface RoundVoice {
   rate: number;
 }
 
-export function requestForRound(
+export async function requestForRound(
   round: Round,
   voice: RoundVoice,
   language: string,
-): TtsRequest {
+): Promise<TtsRequest> {
   const style = styleById(voice.style);
+  // Si por lo que sea no hay voz elegida, se toma la primera del proveedor
+  // en vez de mandar una vacía (el error de la API no dice nada útil).
+  let voiceId = voice.voice;
+  if (!voiceId) {
+    const list = await ttsProvider(voice.provider).voices(language);
+    voiceId = list[0]?.id ?? "";
+  }
   return {
     provider: voice.provider,
-    voice: voice.voice,
+    voice: voiceId,
     style: style.instruction,
     rate: voice.rate ?? style.rate,
     text: round.text,
@@ -33,8 +41,12 @@ export function requestForRound(
 }
 
 function credentialsFor(provider: TtsProviderId) {
-  const ks = getKeystore();
-  return ks?.providers[provider] ?? {};
+  const cfg = getKeystore()?.providers[provider];
+  return {
+    apiKey: cfg?.apiKey,
+    proxyUrl: cfg?.proxyUrl,
+    model: modelFor(cfg, "tts"),
+  };
 }
 
 /** Prepara la voz de una ronda y guarda la referencia en la fila. */
@@ -46,12 +58,12 @@ export async function prepareRound(
   if (!round.text.trim()) {
     throw new TtsError("Esta ronda no tiene texto que decir.");
   }
-  const req = requestForRound(round, voice, language);
+  const req = await requestForRound(round, voice, language);
   const res = await synthesizeCached(req, credentialsFor(voice.provider));
   await db().rounds.update(round.id, {
     modelAudioRef: res.path,
     ttsProvider: voice.provider,
-    ttsVoice: voice.voice,
+    ttsVoice: req.voice,
     ttsStyle: voice.style,
   });
   return res;

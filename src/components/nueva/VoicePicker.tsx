@@ -27,22 +27,36 @@ export function VoicePicker({
 }) {
   const [voices, setVoices] = React.useState<TtsVoice[]>([]);
 
+  // El desplegable enseñaba la primera voz sin escribirla en el estado, así
+  // que se enviaba una voz vacía. Al cargar la lista se fija una válida.
+  const latest = React.useRef({ value, onChange });
+  latest.current = { value, onChange };
+
+  const applyVoices = React.useCallback((list: TtsVoice[]) => {
+    setVoices(list);
+    if (!list.length) return;
+    const { value: v, onChange: cb } = latest.current;
+    if (!v.voice || !list.some((x) => x.id === v.voice)) {
+      cb({ ...v, voice: list[0]!.id });
+    }
+  }, []);
+
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
       const list = await ttsProvider(value.provider).voices(language);
-      if (!cancelled) setVoices(list);
+      if (!cancelled) applyVoices(list);
     })();
     // speechSynthesis puebla las voces de forma asíncrona.
     const t = setTimeout(async () => {
       const list = await ttsProvider(value.provider).voices(language);
-      if (!cancelled) setVoices(list);
+      if (!cancelled) applyVoices(list);
     }, 400);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [value.provider, language]);
+  }, [value.provider, language, applyVoices]);
 
   const ks = getKeystore();
   const providerOptions = ttsProviders().map((p) => {

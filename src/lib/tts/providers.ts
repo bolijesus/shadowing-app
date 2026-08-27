@@ -49,17 +49,39 @@ const browser: TtsProvider = {
 
 /* -------------------------------- Gemini -------------------------------- */
 
-/** Voces prefabricadas de Gemini TTS (§4.3). */
+/** Voces prefabricadas de Gemini TTS (§4.3). Las primeras son las del prompt. */
 const GEMINI_VOICES: TtsVoice[] = [
-  { id: "Iapetus", label: "Iapetus · claro" },
-  { id: "Sulafat", label: "Sulafat · cálido" },
-  { id: "Kore", label: "Kore · firme" },
-  { id: "Puck", label: "Puck · animado" },
-  { id: "Charon", label: "Charon · informativo" },
-  { id: "Fenrir", label: "Fenrir · enérgico" },
-  { id: "Aoede", label: "Aoede · suave" },
-  { id: "Leda", label: "Leda · juvenil" },
-];
+  ["Iapetus", "claro"],
+  ["Sulafat", "cálido"],
+  ["Kore", "firme"],
+  ["Puck", "animado"],
+  ["Charon", "informativo"],
+  ["Fenrir", "enérgico"],
+  ["Aoede", "suave"],
+  ["Leda", "juvenil"],
+  ["Zephyr", "luminoso"],
+  ["Orus", "rotundo"],
+  ["Callirrhoe", "relajado"],
+  ["Autonoe", "brillante"],
+  ["Enceladus", "susurrado"],
+  ["Umbriel", "tranquilo"],
+  ["Algieba", "grave"],
+  ["Despina", "fluido"],
+  ["Erinome", "nítido"],
+  ["Algenib", "áspero"],
+  ["Rasalgethi", "didáctico"],
+  ["Laomedeia", "vivo"],
+  ["Achernar", "delicado"],
+  ["Alnilam", "seguro"],
+  ["Schedar", "uniforme"],
+  ["Gacrux", "maduro"],
+  ["Pulcherrima", "expresivo"],
+  ["Achird", "cercano"],
+  ["Zubenelgenubi", "informal"],
+  ["Vindemiatrix", "amable"],
+  ["Sadachbia", "desenfadado"],
+  ["Sadaltager", "culto"],
+].map(([id, desc]) => ({ id: id!, label: `${id} · ${desc}` }));
 
 const gemini: TtsProvider = {
   id: "gemini",
@@ -68,7 +90,15 @@ const gemini: TtsProvider = {
   needsApiKey: true,
   voices: () => GEMINI_VOICES,
   async synth(req, cfg) {
-    const model = cfg.model || "gemini-2.5-flash-preview-tts";
+    if (!req.voice) {
+      throw new TtsError(
+        "Elige una voz de Gemini antes de generar (Iapetus, Sulafat, Kore…).",
+      );
+    }
+    // La configuración de la key es común al proveedor, pero el modelo no:
+    // el de LLM (gemini-2.5-flash) no sirve para TTS. Si no es de voz, se
+    // usa el de voz por defecto en lugar de fallar con un 400 críptico.
+    const model = ttsModelOr(cfg.model, "gemini-2.5-flash-preview-tts");
     const body = {
       contents: [{ parts: [{ text: `${req.style}\n\n${req.text}` }] }],
       generationConfig: {
@@ -154,7 +184,7 @@ const openai: TtsProvider = {
       method: "POST",
       headers,
       body: JSON.stringify({
-        model: cfg.model || "gpt-4o-mini-tts",
+        model: ttsModelOr(cfg.model, "gpt-4o-mini-tts"),
         input: req.text,
         voice: req.voice || "alloy",
         instructions: req.style,
@@ -237,6 +267,11 @@ export async function synthesize(
     );
   }
   return p.synth(req, cfg);
+}
+
+/** Acepta el modelo configurado solo si es de voz; si no, usa el de por defecto. */
+function ttsModelOr(model: string | undefined, fallback: string): string {
+  return model && /tts|speech|audio/i.test(model) ? model : fallback;
 }
 
 function httpError(who: string, status: number, detail: string): TtsError {

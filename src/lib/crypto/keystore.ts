@@ -15,9 +15,20 @@ export type Capability = "tts" | "asr" | "llm";
 
 export interface ProviderConfig {
   apiKey?: string;
+  /** Modelo por capacidad: el de LLM no sirve para TTS ni para ASR. */
+  models?: Partial<Record<Capability, string>>;
+  /** Compatibilidad con configuraciones antiguas de un solo modelo. */
   model?: string;
   /** Endpoint proxy propio para no exponer la key en el cliente. */
   proxyUrl?: string;
+}
+
+/** Modelo efectivo de un proveedor para una capacidad concreta. */
+export function modelFor(
+  cfg: ProviderConfig | undefined,
+  cap: Capability,
+): string | undefined {
+  return cfg?.models?.[cap] ?? undefined;
 }
 
 export interface KeystoreData {

@@ -361,11 +361,16 @@ function ProviderEditor({
       )}
 
       {models.length > 0 && (
-        <Field label="Modelo">
+        <Field
+          label={`Modelo para ${CAP_LABEL[capability].toLowerCase()}`}
+          hint="La API key se comparte con las demás capacidades de este proveedor; el modelo no."
+        >
           <SelectField
             aria-label="Modelo"
-            value={config.model ?? models[0]!}
-            onValueChange={(v) => onChange({ model: v })}
+            value={config.models?.[capability] ?? models[0]!}
+            onValueChange={(v) =>
+              onChange({ models: { ...config.models, [capability]: v } })
+            }
             options={models.map((m) => ({ value: m, label: m }))}
           />
         </Field>

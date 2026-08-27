@@ -7,6 +7,7 @@ import {
   Card,
   Eyebrow,
   Field,
+  Pill,
   SelectField,
   TextInput,
 } from "@/components/ui/primitives";
@@ -240,27 +241,32 @@ export default function NuevaPracticaPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-2 text-xs font-semibold text-ink-soft">
+      <ol className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs font-bold">
         {(["source", "file", "subs", "range", "rounds"] as Step[]).map((s, i) => (
-          <span
+          <li
             key={s}
+            aria-current={step === s ? "step" : undefined}
             className={
-              step === s ? "text-brand" : i < STEP_ORDER[step] ? "text-ink" : ""
+              step === s
+                ? "text-brand-ink"
+                : i < STEP_ORDER[step]
+                  ? "text-ink"
+                  : "text-ink-soft"
             }
           >
             {i + 1}. {STEP_LABEL[s]}
-            {i < 4 && <span className="mx-1 text-line">·</span>}
-          </span>
+            {i < 4 && <span className="mx-1 text-line-strong">·</span>}
+          </li>
         ))}
-      </div>
+      </ol>
 
       {error && (
-        <div className="rounded-lg border border-brand bg-brand-tint px-4 py-3 text-sm text-brand">
+        <div className="rounded-lg border-l-4 border-brand bg-brand-tint px-4 py-3 text-sm font-medium text-ink">
           {error}
         </div>
       )}
       {busy && (
-        <div className="rounded-lg border border-line bg-panel px-4 py-3 text-sm text-ink-soft">
+        <div className="rounded-lg border-2 border-line bg-panel px-4 py-3 text-sm font-medium text-ink">
           {busy}
         </div>
       )}
@@ -272,14 +278,15 @@ export default function NuevaPracticaPage() {
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <button
               onClick={() => setStep("file")}
-              className="rounded-xl border border-line bg-surface p-5 text-left hover:bg-panel"
+              className="rounded-xl border-2 border-ink bg-surface p-5 text-left transition-colors hover:bg-panel"
             >
-              <p className="font-display text-lg font-bold">
-                Archivo del dispositivo
-              </p>
+              <p className="h-display text-lg">Archivo del dispositivo</p>
               <p className="mt-1 text-sm text-ink-soft">
                 Audio o vídeo local. El camino que mejor funciona: sin copiar
                 bytes.
+              </p>
+              <p className="mt-2 text-xs font-bold text-brand-ink">
+                Disponible ahora →
               </p>
             </button>
             {[
@@ -289,13 +296,11 @@ export default function NuevaPracticaPage() {
             ].map(([t, d]) => (
               <div
                 key={t}
-                className="rounded-xl border border-dashed border-line p-5 text-left opacity-60"
+                className="rounded-xl border-2 border-dashed border-line-strong p-5 text-left"
               >
-                <p className="font-display text-lg font-bold">{t}</p>
+                <p className="h-display text-lg text-ink-soft">{t}</p>
                 <p className="mt-1 text-sm text-ink-soft">{d}</p>
-                <p className="mt-2 text-xs font-semibold text-ink-soft">
-                  Próximamente
-                </p>
+                <Pill className="mt-2">Próximamente</Pill>
               </div>
             ))}
           </div>
@@ -327,7 +332,7 @@ export default function NuevaPracticaPage() {
                   type="file"
                   accept={ACCEPT_ATTR}
                   onChange={onInputFile}
-                  className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-ink file:px-4 file:py-2 file:font-semibold file:text-white"
+                  className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-primary-foreground"
                 />
               </label>
               {pendingFile && (
@@ -375,7 +380,7 @@ export default function NuevaPracticaPage() {
                 type="file"
                 accept=".srt,.vtt,.ass,.ssa,text/vtt"
                 onChange={onSubsFile}
-                className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-ink file:px-4 file:py-2 file:font-semibold file:text-white"
+                className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-primary-foreground"
               />
             </Field>
             {cues.length > 0 && (
@@ -511,7 +516,7 @@ export default function NuevaPracticaPage() {
             ).map((s) => (
               <li
                 key={s.index}
-                className="rounded-lg border border-line bg-surface px-3 py-2 text-sm"
+                className="rounded-lg border-2 border-line bg-surface px-3 py-2 text-sm"
               >
                 <span className="mr-2 font-mono text-xs text-ink-soft">
                   {fmtClock(s.startSec)}–{fmtClock(s.endSec)}

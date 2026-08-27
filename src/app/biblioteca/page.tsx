@@ -89,7 +89,7 @@ export default function LibraryPage() {
             ))
         ) : (
           <EmptyState title="Sin prácticas">
-            <Link href="/nueva" className="font-semibold text-brand">
+            <Link href="/nueva" className="font-semibold text-brand-ink">
               Crea la primera →
             </Link>
           </EmptyState>
@@ -150,7 +150,7 @@ export default function LibraryPage() {
                         </span>
                       </span>
                       <button
-                        className="text-xs font-semibold text-ink-soft hover:text-brand"
+                        className="text-xs font-semibold text-ink-soft hover:text-brand-ink"
                         onClick={async () => {
                           if (
                             await confirm({

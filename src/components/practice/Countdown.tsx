@@ -25,12 +25,12 @@ export function Countdown({
 
   return (
     <div
-      className="flex flex-col items-center justify-center gap-1 rounded-xl bg-ink py-12 text-white"
+      className="flex flex-col items-center justify-center gap-1 rounded-xl bg-primary py-12 text-primary-foreground"
       role="alertdialog"
       aria-label={`${label}. ${n > 0 ? n : "ya"}`}
     >
       <p className="h-display text-7xl">{n > 0 ? n : "¡Ya!"}</p>
-      <p className="text-sm font-semibold text-white/70">{label}</p>
+      <p className="text-sm font-semibold text-primary-foreground/70">{label}</p>
     </div>
   );
 }

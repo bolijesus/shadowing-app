@@ -57,7 +57,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               className={cx(
                 "rounded-lg px-3 py-2 text-sm font-semibold",
                 pathname === n.href
-                  ? "bg-ink text-white"
+                  ? "bg-primary text-primary-foreground"
                   : "text-ink-soft hover:bg-panel hover:text-ink",
               )}
             >
@@ -69,14 +69,14 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
 
       <main className="flex-1">{children}</main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface/95 backdrop-blur sm:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t-2 border-line bg-surface/95 backdrop-blur sm:hidden">
         {NAV.map((n) => (
           <Link
             key={n.href}
             href={n.href}
             className={cx(
               "flex flex-1 flex-col items-center justify-center gap-0.5 py-3 text-xs font-semibold",
-              pathname === n.href ? "text-brand" : "text-ink-soft",
+              pathname === n.href ? "text-brand-ink" : "text-ink-soft",
             )}
           >
             {n.label}

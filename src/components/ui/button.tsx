@@ -17,9 +17,9 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-ink text-white border-ink hover:bg-black hover:border-black",
+          "bg-primary text-primary-foreground border-primary hover:opacity-85",
         outline:
-          "border-line-strong bg-surface text-ink hover:border-ink hover:bg-panel",
+          "border-line-strong bg-surface text-ink hover:border-foreground hover:bg-panel",
         secondary:
           "bg-panel text-ink border-panel hover:border-line-strong",
         ghost:

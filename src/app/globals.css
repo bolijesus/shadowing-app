@@ -19,12 +19,12 @@
   --ink: #16161a; /* texto principal y botón primario */
   --ink-soft: #5f5c55; /* secundario (AA sobre crema) */
   --brand: #f5402c; /* rojo: eyebrows, grabación, progreso */
-  --brand-ink: #d92d1a; /* rojo con más contraste para texto pequeño */
+  --brand-ink: #cc2917; /* rojo para texto pequeño — AA sobre el tinte */
   --brand-tint: #fdeae7; /* rojo muy claro: fondo del botón de grabar */
   --data: #2438e8; /* azul: solo cifras de puntuación */
-  --ok: #158a5b;
-  --line: #ded6c9; /* divisores */
-  --line-strong: #a89e88; /* bordes de controles interactivos */
+  --ok: #178057;
+  --line: #c7c0b4; /* divisores y bordes de tarjeta — visibles sobre crema */
+  --line-strong: #9a9179; /* bordes de controles interactivos */
 
   /* Mapeo de shadcn/ui al sistema. */
   --background: var(--bg);
@@ -66,21 +66,30 @@
 }
 
 :root[data-theme="dark"] {
-  --bg: #131317;
-  --surface: #1e1e23;
-  --panel: #292930;
-  --ink: #f5f2ea;
-  --ink-soft: #b3aea3;
-  --brand: #ff5a44;
-  --brand-ink: #ff7663;
-  --brand-tint: #3a201c;
-  --data: #8b98ff;
-  --ok: #46c58c;
-  --line: #35353d;
-  --line-strong: #5b5b66;
+  --bg: #101014; /* fondo */
+  --surface: #1c1c22; /* tarjetas: se separan del fondo */
+  --panel: #2b2b33; /* paneles hundidos */
+  --ink: #f7f4ec;
+  --ink-soft: #c2bcb0; /* AA sobre surface y panel */
+  --brand: #ff6a55;
+  --brand-ink: #ff8f7e; /* texto rojo legible sobre oscuro */
+  --brand-tint: #3d211d;
+  --data: #a3adff; /* cifras de puntuación */
+  --ok: #4fd39a;
+  --line: #43434f; /* divisores y bordes de tarjeta, visibles */
+  --line-strong: #74747f; /* bordes de controles interactivos */
 
-  --primary-foreground: #131317;
-  --sidebar-primary-foreground: #131317;
+  /* Sobre fondo claro (--ink) el texto debe ser oscuro. */
+  --primary-foreground: #101014;
+  --sidebar-primary-foreground: #101014;
+}
+
+/* Controles nativos (scrollbar, checkbox) acordes al tema. */
+:root {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @theme inline {

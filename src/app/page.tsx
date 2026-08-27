@@ -59,7 +59,7 @@ export default function HomePage() {
               <li key={p.id}>
                 <Link
                   href={`/practica/${p.id}`}
-                  className="flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 hover:bg-panel"
+                  className="flex items-center justify-between rounded-xl border-2 border-line bg-surface px-4 py-3 hover:bg-panel"
                 >
                   <span>
                     <span className="font-semibold text-ink">{p.title}</span>

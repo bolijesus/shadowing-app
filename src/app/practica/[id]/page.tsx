@@ -113,6 +113,7 @@ export default function PracticePlayerPage() {
   const [playing, setPlaying] = React.useState(false);
   const [recPct, setRecPct] = React.useState(0);
   const [loop, setLoop] = React.useState(false);
+  const loopRef = React.useRef(false);
   const [textHidden, setTextHidden] = React.useState(false);
   const [takes, setTakes] = React.useState<Record<string, { url: string; blob: Blob; mime: string; dur: number }>>(
     {},
@@ -135,6 +136,7 @@ export default function PracticePlayerPage() {
   const playerRef = React.useRef<RangePlayer | null>(null);
   const recorderRef = React.useRef<VoiceRecorder | null>(null);
   const objectUrlRef = React.useRef<string | null>(null);
+  const desiredRangeRef = React.useRef<[number, number]>([0, 0]);
   const ytHostRef = React.useRef<HTMLDivElement>(null);
   const ytRef = React.useRef<YouTubeRangePlayer | null>(null);
 
@@ -270,6 +272,11 @@ export default function PracticePlayerPage() {
     const rp = new RangePlayer(el);
     rp.playbackRate = defaultRate;
     rp.onEnded(() => setPhase((p) => (p === "listen" ? "listen" : p)));
+    // Al llegar el audio se crea un reproductor nuevo: hay que darle el
+    // rango de la ronda aquí, o se quedaría con [0, 0] y se pausaría solo.
+    const [rs, re] = desiredRangeRef.current;
+    rp.setRange(rs, re);
+    rp.setLoop(loopRef.current);
     playerRef.current = rp;
 
     let raf = 0;
@@ -321,10 +328,18 @@ export default function PracticePlayerPage() {
 
   /* --- rango del RangePlayer para la ronda actual --- */
   React.useEffect(() => {
-    if (!playerRef.current || !round) return;
+    loopRef.current = loop;
+    if (!round) return;
+    desiredRangeRef.current = isTts
+      ? [0, Number.MAX_SAFE_INTEGER]
+      : [round.startSec, round.endSec];
+    if (!playerRef.current) return;
     // En TTS cada ronda es su propio archivo: el rango es todo el blob.
-    if (isTts) playerRef.current.setRange(0, Number.MAX_SAFE_INTEGER);
-    else playerRef.current.setRange(round.startSec, round.endSec);
+    const range: [number, number] = isTts
+      ? [0, Number.MAX_SAFE_INTEGER]
+      : [round.startSec, round.endSec];
+    desiredRangeRef.current = range;
+    playerRef.current.setRange(range[0], range[1]);
     playerRef.current.setLoop(loop);
     setPhase("listen");
     setRecPct(0);

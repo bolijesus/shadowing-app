@@ -24,6 +24,7 @@ export class RangePlayer {
   }
 
   private tick = () => {
+    if (this.limit <= this.start) return; // rango aún sin fijar
     if (this.el.currentTime >= this.limit - 0.02) {
       if (this.loop) {
         this.el.currentTime = this.start;

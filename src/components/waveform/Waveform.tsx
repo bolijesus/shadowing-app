@@ -118,29 +118,46 @@ export function Waveform({
     ctx.fill();
     ctx.restore();
 
-    // Línea de entonación (F0).
+    // Línea de entonación (F0): un trazo continuo por tramo con voz.
     if (f0 && f0.length > 1) {
-      ctx.strokeStyle = ink;
-      ctx.lineWidth = 1.5;
-      ctx.globalAlpha = 0.9;
-      ctx.beginPath();
-      let pen = false;
+      const toX = (i: number) => (i / (f0.length - 1)) * width;
+      const toY = (v: number) => mid - Math.max(-1, Math.min(1, v)) * (maxAmp * 0.8);
+
+      // Se agrupan los puntos en tramos contiguos y se descartan los de un
+      // solo punto, que se verían como motas sueltas en vez de como línea.
+      const runs: { x: number; y: number }[][] = [];
+      let run: { x: number; y: number }[] = [];
       for (let i = 0; i < f0.length; i++) {
         const v = f0[i]!;
-        const x = (i / (f0.length - 1)) * width;
         if (Number.isNaN(v)) {
-          pen = false;
-          continue;
-        }
-        const y = mid - Math.max(-1, Math.min(1, v)) * (maxAmp * 0.8);
-        if (!pen) {
-          ctx.moveTo(x, y);
-          pen = true;
+          if (run.length > 1) runs.push(run);
+          run = [];
         } else {
-          ctx.lineTo(x, y);
+          run.push({ x: toX(i), y: toY(v) });
         }
       }
-      ctx.stroke();
+      if (run.length > 1) runs.push(run);
+
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.globalAlpha = 0.95;
+
+      for (const pts of runs) {
+        ctx.beginPath();
+        ctx.moveTo(pts[0]!.x, pts[0]!.y);
+        // Curva por puntos medios: suaviza los saltos entre tramas sin
+        // desplazar el contorno real.
+        for (let i = 1; i < pts.length - 1; i++) {
+          const p = pts[i]!;
+          const n = pts[i + 1]!;
+          ctx.quadraticCurveTo(p.x, p.y, (p.x + n.x) / 2, (p.y + n.y) / 2);
+        }
+        const last = pts[pts.length - 1]!;
+        ctx.lineTo(last.x, last.y);
+        ctx.stroke();
+      }
       ctx.globalAlpha = 1;
     }
 

@@ -1,5 +1,5 @@
 import { dtw, costToScore } from "@/lib/dsp/dtw";
-import { prepareForDtw, resampleTo } from "@/lib/dsp/normalize";
+import { prepareForDtw, resampleMean } from "@/lib/dsp/normalize";
 import { dynamicRangeSemitones } from "@/lib/dsp/f0";
 import type { Analysis } from "@/workers/audio-dsp.worker";
 
@@ -223,7 +223,9 @@ export function contourForDisplay(
   semitones: Float32Array,
   points = 220,
 ): Float32Array {
-  const r = resampleTo(semitones, points);
+  // Media por bin: reducir con interpolación lineal propagaba los NaN y
+  // ensanchaba cada hueco, que es lo que rompía la línea en trocitos.
+  const r = resampleMean(semitones, points);
   // Escala a [-1, 1] con ±8 semitonos como fondo de escala.
   const out = new Float32Array(r.length);
   for (let i = 0; i < r.length; i++) {

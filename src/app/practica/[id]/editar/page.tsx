@@ -23,6 +23,7 @@ import { prepareAll, prepareRound, type PrepState } from "@/lib/tts/queue";
 import { ttsProvider } from "@/lib/tts/providers";
 import { styleById, type TtsProviderId } from "@/lib/tts/types";
 import { readAsObjectURL } from "@/lib/storage/opfs";
+import { OfflineStatus } from "@/components/practice/OfflineStatus";
 import { fmtClock } from "@/lib/util";
 
 export default function EditPracticePage() {
@@ -64,6 +65,7 @@ export default function EditPracticePage() {
     React.useState<VoiceSelection>(DEFAULT_VOICE);
   const [prep, setPrep] = React.useState<Record<string, PrepState>>({});
   const [errors, setErrors] = React.useState<Record<string, string>>({});
+  const [cached, setCached] = React.useState<Record<string, boolean>>({});
   const [queueRunning, setQueueRunning] = React.useState(false);
   const abortRef = React.useRef<AbortController | null>(null);
 
@@ -132,12 +134,13 @@ export default function EditPracticePage() {
     setErrors((e) => ({ ...e, [rid]: "" }));
     try {
       await db().rounds.update(rid, { text });
-      await prepareRound(
+      const res = await prepareRound(
         { ...round, text },
         voices[rid] ?? globalVoice,
         language,
       );
       setPrep((s) => ({ ...s, [rid]: "ready" }));
+      setCached((c) => ({ ...c, [rid]: res.fromCache }));
     } catch (e) {
       setPrep((s) => ({ ...s, [rid]: "error" }));
       setErrors((er) => ({
@@ -232,6 +235,8 @@ export default function EditPracticePage() {
               {readyCount} de {order.length} listas
             </Pill>
           </div>
+
+          <OfflineStatus rounds={rounds ?? []} />
 
           <VoicePicker
             value={globalVoice}
@@ -359,6 +364,7 @@ export default function EditPracticePage() {
                   )}
                   <p className="mt-2 text-xs text-ink-soft">
                     {styleById((voices[rid] ?? globalVoice).style).label}
+                    {cached[rid] && " · ya estaba descargada, sin llamada a la API"}
                   </p>
                 </>
               )}

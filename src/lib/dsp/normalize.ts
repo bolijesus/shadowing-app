@@ -5,6 +5,35 @@
 
 export const DTW_POINTS = 100;
 
+/**
+ * Remuestreo por media de bin, pensado para dibujar: cada punto de salida
+ * promedia las tramas que le tocan e ignora las sordas. Solo sale NaN si
+ * TODO el bin era sordo. Al reducir la resolución esto evita que un hueco
+ * de una trama se coma a sus vecinas, que es lo que fragmentaba la curva.
+ */
+export function resampleMean(src: Float32Array, n: number): Float32Array {
+  const out = new Float32Array(n);
+  if (src.length === 0) {
+    out.fill(NaN);
+    return out;
+  }
+  for (let i = 0; i < n; i++) {
+    const from = Math.floor((i * src.length) / n);
+    const to = Math.max(from + 1, Math.floor(((i + 1) * src.length) / n));
+    let sum = 0;
+    let count = 0;
+    for (let k = from; k < to && k < src.length; k++) {
+      const v = src[k]!;
+      if (!Number.isNaN(v)) {
+        sum += v;
+        count++;
+      }
+    }
+    out[i] = count ? sum / count : NaN;
+  }
+  return out;
+}
+
 /** Remuestreo lineal a `n` puntos. Un NaN vecino propaga NaN (no inventa voz). */
 export function resampleTo(src: Float32Array, n = DTW_POINTS): Float32Array {
   const out = new Float32Array(n);

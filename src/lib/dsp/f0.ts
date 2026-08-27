@@ -37,6 +37,53 @@ export function median(values: number[]): number {
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 }
 
+/**
+ * Descarta islas de voz más cortas que `minFrames`: a 10 ms por trama, tres
+ * tramas son 30 ms, demasiado poco para ser una vocal. Suelen ser el
+ * detector enganchándose a una consonante sonora o a un chasquido.
+ */
+function dropShortIslands(src: Float32Array, minFrames: number): Float32Array {
+  const out = Float32Array.from(src);
+  let start = -1;
+  for (let i = 0; i <= out.length; i++) {
+    const voiced = i < out.length && !Number.isNaN(out[i]!);
+    if (voiced && start === -1) start = i;
+    if (!voiced && start !== -1) {
+      if (i - start < minFrames) out.fill(NaN, start, i);
+      start = -1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Une huecos sordos cortos interpolando entre los extremos. Dentro de una
+ * palabra la entonación es continua aunque haya oclusivas; los huecos
+ * largos (pausas de verdad) se respetan y siguen partiendo la línea (§6.2).
+ */
+function bridgeGaps(src: Float32Array, maxFrames: number): Float32Array {
+  const out = Float32Array.from(src);
+  let gapStart = -1;
+  for (let i = 0; i < out.length; i++) {
+    if (Number.isNaN(out[i]!)) {
+      if (gapStart === -1) gapStart = i;
+      continue;
+    }
+    if (gapStart > 0) {
+      const len = i - gapStart;
+      const before = out[gapStart - 1]!;
+      const after = out[i]!;
+      if (len <= maxFrames && !Number.isNaN(before)) {
+        for (let k = 0; k < len; k++) {
+          out[gapStart + k] = before + ((after - before) * (k + 1)) / (len + 1);
+        }
+      }
+    }
+    gapStart = -1;
+  }
+  return out;
+}
+
 /** Mediana móvil de 5 que respeta los NaN (no rellena huecos). */
 function medianFilter5(src: Float32Array): Float32Array {
   const out = new Float32Array(src.length);
@@ -119,7 +166,9 @@ export function computeF0(pcm: Float32Array, sampleRate: number): F0Curve {
         : NaN;
   }
 
-  const smooth = movingAvg3(medianFilter5(hz));
+  const smooth = movingAvg3(
+    medianFilter5(bridgeGaps(dropShortIslands(hz, 3), 12)),
+  );
 
   const voiced: number[] = [];
   for (const v of smooth) if (!Number.isNaN(v)) voiced.push(v);

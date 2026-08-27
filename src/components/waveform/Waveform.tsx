@@ -157,17 +157,12 @@ export function Waveform({
 
   return (
     <div ref={boxRef} className="relative w-full">
-      {label && (
-        <span className="absolute left-3 top-2 z-10 text-[10px] font-extrabold uppercase tracking-[0.12em] text-ink-soft">
-          {label}
-        </span>
-      )}
       <canvas
         ref={canvasRef}
         role={onSeek ? "slider" : "img"}
         aria-label={label ? `Onda ${label}` : "Forma de onda"}
         style={{ width: "100%", height }}
-        className="rounded-lg border-2 border-line bg-panel"
+        className="rounded-lg bg-panel"
         onClick={(e) => {
           if (!onSeek) return;
           const rect = e.currentTarget.getBoundingClientRect();

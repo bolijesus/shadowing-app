@@ -2,20 +2,40 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/db";
-import type { Round, Take } from "@/lib/types";
-import { Button, Card, Eyebrow, EmptyState } from "@/components/ui/primitives";
+import type { Clip, MediaItem, Round, Take } from "@/lib/types";
+import { Button, Eyebrow, EmptyState } from "@/components/ui/primitives";
+import { SegmentedProgress } from "@/components/practice/SegmentedProgress";
+import { WaveformPanel } from "@/components/waveform/WaveformPanel";
+import { BigScore, ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
 import { readAsObjectURL } from "@/lib/storage/opfs";
+import {
+  loadAnalysis,
+  getOrBuildRoundAnalysis,
+  type Analysis,
+} from "@/lib/audio/analysis";
+import { contourForDisplay, type RoundScore } from "@/lib/scoring/scoreRound";
+import { resolveMediaSource } from "@/lib/media/source";
+import { mediaFileCache } from "@/lib/media/fileCache";
+import { RangePlayer } from "@/lib/audio/rangePlayer";
+import { ensureAudioContext } from "@/lib/audio/context";
+import { cn } from "@/lib/utils";
 import { fmtClock } from "@/lib/util";
 
 export default function ResultsPage() {
+  const router = useRouter();
   const { practiceId } = useParams<{ practiceId: string }>();
 
-  const practice = useLiveQuery(
-    () => db().practices.get(practiceId),
-    [practiceId],
+  const practice = useLiveQuery(() => db().practices.get(practiceId), [practiceId]);
+  const clip = useLiveQuery<Clip | undefined>(
+    () => (practice ? db().clips.get(practice.clipId) : undefined),
+    [practice?.clipId],
+  );
+  const media = useLiveQuery<MediaItem | undefined>(
+    () => (clip ? db().media.get(clip.mediaId) : undefined),
+    [clip?.mediaId],
   );
   const rounds = useLiveQuery<Round[]>(
     () =>
@@ -27,8 +47,7 @@ export default function ResultsPage() {
             .then((rs) =>
               rs.sort(
                 (a, b) =>
-                  practice.roundIds.indexOf(a.id) -
-                  practice.roundIds.indexOf(b.id),
+                  practice.roundIds.indexOf(a.id) - practice.roundIds.indexOf(b.id),
               ),
             )
         : [],
@@ -37,13 +56,15 @@ export default function ResultsPage() {
   const takes = useLiveQuery<Take[]>(
     () =>
       rounds && rounds.length
-        ? db()
-            .takes.where("roundId")
-            .anyOf(rounds.map((r) => r.id))
-            .toArray()
+        ? db().takes.where("roundId").anyOf(rounds.map((r) => r.id)).toArray()
         : [],
     [rounds?.map((r) => r.id).join(",")],
   );
+
+  const [idx, setIdx] = React.useState(0);
+  const [textHidden, setTextHidden] = React.useState(false);
+  const [showIntonation, setShowIntonation] = React.useState(true);
+  const [file, setFile] = React.useState<Blob | null>(null);
 
   const latestByRound = React.useMemo(() => {
     const m = new Map<string, Take>();
@@ -54,56 +75,239 @@ export default function ResultsPage() {
     return m;
   }, [takes]);
 
+  React.useEffect(() => {
+    if (!media) return;
+    let cancelled = false;
+    (async () => {
+      const cached = mediaFileCache.get(media.id);
+      if (cached) {
+        if (!cancelled) setFile(cached);
+        return;
+      }
+      const res = await resolveMediaSource(media);
+      if (!cancelled && res.kind === "ready") {
+        mediaFileCache.set(media.id, res.file);
+        setFile(res.file);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [media]);
+
+  const scored = React.useMemo(
+    () =>
+      (rounds ?? []).map((r) => latestByRound.get(r.id)?.score?.total ?? null),
+    [rounds, latestByRound],
+  );
+  const withScore = scored.filter((v): v is number => v !== null);
+  const overall = withScore.length
+    ? Math.round(withScore.reduce((a, b) => a + b, 0) / withScore.length)
+    : null;
+
+  if (practice === undefined) {
+    return <p className="p-8 text-center text-ink-soft">Cargando resultados…</p>;
+  }
   if (!practice) {
-    return (
-      <EmptyState title="Sin resultados">Esta práctica ya no existe.</EmptyState>
-    );
+    return <EmptyState title="Sin resultados">Esta práctica ya no existe.</EmptyState>;
   }
 
+  const total = rounds?.length ?? 0;
+  const round = rounds?.[idx];
+  const take = round ? latestByRound.get(round.id) : undefined;
+
   return (
-    <div className="space-y-5">
-      <div>
-        <Eyebrow>Resumen</Eyebrow>
-        <h1 className="h-display mt-1 text-2xl">{practice.title}</h1>
-        <p className="mt-1 text-sm text-ink-soft">
-          {latestByRound.size} de {rounds?.length ?? 0} rondas con toma guardada.
-          La puntuación acústica llega en la fase de análisis.
+    <div className="mx-auto w-full max-w-2xl space-y-4">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <p className="h-display text-xl">{practice.title}</p>
+          <p className="text-sm text-ink-soft">Práctica de pronunciación</p>
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="Salir de los resultados"
+          onClick={() => router.push("/")}
+          className="rounded-full"
+        >
+          ✕
+        </Button>
+      </header>
+
+      <div className="space-y-1.5">
+        <p className="text-right text-sm font-bold">
+          Revisando la ronda {idx + 1} de {total}
         </p>
+        <SegmentedProgress
+          total={total}
+          done={scored.map((v) => v !== null)}
+          current={idx}
+          onJump={setIdx}
+        />
       </div>
 
-      <div className="flex gap-2">
+      {/* Resumen de la práctica completa */}
+      <section className="rounded-xl border-2 border-line bg-surface p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <Eyebrow>Práctica completa</Eyebrow>
+            <h1 className="h-display mt-1 text-2xl">Notas por ronda</h1>
+            <p className="mt-1 text-sm text-ink-soft">
+              Revisa la práctica entera o abre cualquier ronda.
+            </p>
+          </div>
+          {overall !== null && <BigScore value={overall} className="shrink-0" />}
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {(rounds ?? []).map((r, i) => (
+            <button
+              key={r.id}
+              onClick={() => setIdx(i)}
+              aria-current={i === idx}
+              className={cn(
+                "rounded-xl border-2 px-3 py-2.5 text-left transition-colors",
+                i === idx
+                  ? "border-ink bg-surface"
+                  : "border-line bg-surface hover:border-line-strong",
+              )}
+            >
+              <span className="block text-xs font-bold text-ink-soft">
+                Ronda {i + 1}
+              </span>
+              <span
+                className={cn(
+                  "h-display block text-2xl tabular-nums",
+                  scored[i] === null ? "text-ink-soft" : "text-data",
+                )}
+              >
+                {scored[i] ?? "—"}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {overall === null && (
+          <p className="mt-3 text-sm text-ink-soft">
+            Todavía no hay notas. Graba una toma en cada ronda para obtenerlas.
+          </p>
+        )}
+      </section>
+
+      {/* Detalle de la ronda seleccionada */}
+      {round && (
+        <section className="space-y-4 rounded-xl border-2 border-line bg-surface p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <Eyebrow>{practice.title}</Eyebrow>
+              <h2 className="h-display mt-1 text-2xl">
+                Revisión de la ronda {idx + 1}
+              </h2>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTextHidden((v) => !v)}
+            >
+              {textHidden ? "Mostrar texto" : "Ocultar texto"}
+            </Button>
+          </div>
+
+          <div
+            className="rounded-xl bg-panel p-5 transition-opacity"
+            style={{ opacity: textHidden ? 0.001 : 1 }}
+            aria-hidden={textHidden}
+          >
+            <p className="text-[22px] font-extrabold leading-snug text-ink">
+              {round.text || (
+                <span className="text-ink-soft">(sin texto para esta ronda)</span>
+              )}
+            </p>
+          </div>
+
+          <RoundDetail
+            key={round.id}
+            round={round}
+            take={take}
+            file={file}
+            showIntonation={showIntonation}
+            onToggleIntonation={() => setShowIntonation((v) => !v)}
+          />
+
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              disabled={idx === 0}
+              onClick={() => setIdx((i) => Math.max(0, i - 1))}
+            >
+              Nota anterior
+            </Button>
+            <Button
+              disabled={idx + 1 >= total}
+              onClick={() => setIdx((i) => Math.min(total - 1, i + 1))}
+            >
+              Nota siguiente
+            </Button>
+          </div>
+        </section>
+      )}
+
+      <div className="flex flex-wrap gap-2">
         <Link href={`/practica/${practice.id}`}>
-          <Button variant="default">Repetir práctica</Button>
+          <Button>Repetir práctica</Button>
         </Link>
         <Link href={`/practica/${practice.id}/editar`}>
           <Button variant="outline">Editar rondas</Button>
         </Link>
       </div>
-
-      <ol className="space-y-3">
-        {(rounds ?? []).map((r, i) => (
-          <RoundResult
-            key={r.id}
-            index={i}
-            round={r}
-            take={latestByRound.get(r.id)}
-          />
-        ))}
-      </ol>
     </div>
   );
 }
 
-function RoundResult({
-  index,
+function RoundDetail({
   round,
   take,
+  file,
+  showIntonation,
+  onToggleIntonation,
 }: {
-  index: number;
   round: Round;
   take?: Take;
+  file: Blob | null;
+  showIntonation: boolean;
+  onToggleIntonation: () => void;
 }) {
+  const [modelA, setModelA] = React.useState<Analysis | null>(null);
+  const [takeA, setTakeA] = React.useState<Analysis | null>(null);
   const [url, setUrl] = React.useState<string | null>(null);
+  const modelElRef = React.useRef<HTMLAudioElement | null>(null);
+  const playerRef = React.useRef<RangePlayer | null>(null);
+  const [modelPos, setModelPos] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!file) return;
+    let cancelled = false;
+    getOrBuildRoundAnalysis(round.id, file, round.startSec, round.endSec)
+      .then((a) => !cancelled && setModelA(a))
+      .catch(() => !cancelled && setModelA(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [file, round.id, round.startSec, round.endSec]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (take?.analysisRef) {
+      loadAnalysis(take.analysisRef)
+        .then((a) => !cancelled && setTakeA(a))
+        .catch(() => !cancelled && setTakeA(null));
+    } else {
+      setTakeA(null);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [take?.analysisRef]);
 
   React.useEffect(() => {
     let revoked: string | null = null;
@@ -114,36 +318,118 @@ function RoundResult({
           setUrl(u);
         })
         .catch(() => setUrl(null));
+    } else {
+      setUrl(null);
     }
     return () => {
       if (revoked) URL.revokeObjectURL(revoked);
     };
   }, [take?.audioRef, take?.mime]);
 
+  // Reproductor del modelo, limitado al rango de la ronda.
+  React.useEffect(() => {
+    if (!file) return;
+    const objUrl = URL.createObjectURL(file);
+    const el = document.createElement("audio");
+    el.src = objUrl;
+    el.preload = "metadata";
+    modelElRef.current = el;
+    const rp = new RangePlayer(el);
+    rp.setRange(round.startSec, round.endSec);
+    playerRef.current = rp;
+    let raf = 0;
+    const tick = () => {
+      setModelPos(rp.position);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      rp.destroy();
+      URL.revokeObjectURL(objUrl);
+      playerRef.current = null;
+    };
+  }, [file, round.startSec, round.endSec]);
+
+  const modelContour = React.useMemo(
+    () => (modelA ? contourForDisplay(modelA.semitones) : null),
+    [modelA],
+  );
+  const takeContour = React.useMemo(
+    () => (takeA ? contourForDisplay(takeA.semitones) : null),
+    [takeA],
+  );
+
+  const playModel = () => {
+    ensureAudioContext();
+    void playerRef.current?.play(true);
+  };
+  const playMine = () => {
+    if (url) void new Audio(url).play();
+  };
+
+  const score = take?.score as RoundScore | undefined;
+
   return (
-    <Card>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-mono text-ink-soft">
-            Ronda {index + 1} · {fmtClock(round.startSec)}–{fmtClock(round.endSec)}
-          </p>
-          <p className="mt-1 font-semibold text-ink">
-            {round.text || <span className="text-ink-soft">(sin texto)</span>}
-          </p>
-        </div>
-        <span
-          className={
-            take
-              ? "shrink-0 rounded-full bg-ok/15 px-2 py-1 text-xs font-semibold text-ok"
-              : "shrink-0 rounded-full bg-panel px-2 py-1 text-xs font-semibold text-ink-soft"
-          }
-        >
-          {take ? "Toma guardada" : "Sin toma"}
-        </span>
+    <div className="space-y-4">
+      <div className="space-y-3">
+        <WaveformPanel
+          label="Modelo"
+          peaks={modelA?.peaks ?? null}
+          contour={modelContour}
+          progress={modelPos}
+          height={110}
+          showIntonation={showIntonation}
+          onToggleIntonation={onToggleIntonation}
+        />
+        {takeA && (
+          <WaveformPanel
+            label="Tú"
+            peaks={takeA.peaks}
+            contour={takeContour}
+            height={92}
+            showIntonation={showIntonation}
+          />
+        )}
       </div>
-      {url && (
-        <audio controls src={url} className="mt-3 w-full" preload="none" />
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Eyebrow>Coincidencia · ronda {round.index + 1}</Eyebrow>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={playModel} disabled={!file}>
+            Modelo
+          </Button>
+          <Button variant="outline" size="sm" onClick={playMine} disabled={!url}>
+            La mía
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!url || !file}
+            onClick={() => {
+              playModel();
+              playMine();
+            }}
+          >
+            Juntas
+          </Button>
+        </div>
+      </div>
+
+      {score ? (
+        <ScoreBreakdown score={score} />
+      ) : take ? (
+        <p className="text-sm text-ink-soft">
+          Esta toma se guardó sin análisis. Vuelve a grabarla para obtener nota.
+        </p>
+      ) : (
+        <p className="text-sm text-ink-soft">
+          Sin toma guardada en esta ronda ·{" "}
+          {fmtClock(round.startSec)}–{fmtClock(round.endSec)}
+        </p>
       )}
-    </Card>
+
+      {url && <audio controls src={url} className="w-full" preload="none" />}
+    </div>
   );
 }

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/db";
 import type { Clip, MediaItem, Practice, Round, Transcript } from "@/lib/types";
-import { Button } from "@/components/ui/primitives";
+import { Button, Eyebrow } from "@/components/ui/primitives";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Waveform } from "@/components/waveform/Waveform";
 import { SegmentedProgress } from "@/components/practice/SegmentedProgress";
 import { Countdown } from "@/components/practice/Countdown";
 import { useShortcuts } from "@/lib/keyboard/useShortcuts";
@@ -26,7 +25,17 @@ import {
 import { ensureAudioContext } from "@/lib/audio/context";
 import { resolveMediaSource, requestHandlePermission } from "@/lib/media/source";
 import { mediaFileCache } from "@/lib/media/fileCache";
-import { computePeaksFromBlob, getOrBuildPeaks } from "@/lib/audio/peaks";
+import { getOrBuildPeaks } from "@/lib/audio/peaks";
+import {
+  analyzeTake,
+  getOrBuildRoundAnalysis,
+  saveTakeAnalysis,
+  type Analysis,
+} from "@/lib/audio/analysis";
+import { scoreRound, contourForDisplay } from "@/lib/scoring/scoreRound";
+import { buildAdvice } from "@/lib/scoring/advice";
+import { WaveformPanel } from "@/components/waveform/WaveformPanel";
+import { ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
 import { FileTooLargeToDecode } from "@/lib/audio/decode";
 import { speakWithBrowser, cancelBrowserSpeech } from "@/lib/tts/browser";
 import type { Peaks } from "@/workers/audio-dsp.worker";
@@ -93,13 +102,21 @@ export default function PracticePlayerPage() {
   const [idx, setIdx] = React.useState(0);
   const [phase, setPhase] = React.useState<Phase>("listen");
   const [modelPos, setModelPos] = React.useState(0);
+  const [playing, setPlaying] = React.useState(false);
   const [recPct, setRecPct] = React.useState(0);
   const [loop, setLoop] = React.useState(false);
   const [textHidden, setTextHidden] = React.useState(false);
   const [takes, setTakes] = React.useState<Record<string, { url: string; blob: Blob; mime: string; dur: number }>>(
     {},
   );
-  const [youPeaks, setYouPeaks] = React.useState<Peaks | null>(null);
+  const [youAnalysis, setYouAnalysis] = React.useState<Analysis | null>(null);
+  const [modelAnalysis, setModelAnalysis] = React.useState<Analysis | null>(null);
+  const modelAnalysisRef = React.useRef<Analysis | null>(null);
+  const [showIntonation, setShowIntonation] = React.useState(true);
+  const [scoring, setScoring] = React.useState(false);
+  const [roundScore, setRoundScore] = React.useState<
+    ReturnType<typeof scoreRound> | null
+  >(null);
 
   const [showHeadphones, setShowHeadphones] = React.useState(false);
   const [showMicExplain, setShowMicExplain] = React.useState(false);
@@ -171,6 +188,7 @@ export default function PracticePlayerPage() {
     let raf = 0;
     const tick = () => {
       setModelPos(rp.position);
+      setPlaying(rp.playing);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -221,13 +239,53 @@ export default function PracticePlayerPage() {
     playerRef.current.setLoop(loop);
     setPhase("listen");
     setRecPct(0);
-    setYouPeaks(null);
+    setYouAnalysis(null);
+    setRoundScore(null);
   }, [round, loop]);
+
+  /* --- análisis del modelo de la ronda (F0 + energía), cacheado --- */
+  React.useEffect(() => {
+    if (!file || !round) return;
+    let cancelled = false;
+    setModelAnalysis(null);
+    modelAnalysisRef.current = null;
+    (async () => {
+      try {
+        const a = await getOrBuildRoundAnalysis(
+          round.id,
+          file,
+          round.startSec,
+          round.endSec,
+        );
+        if (!cancelled) {
+          setModelAnalysis(a);
+          modelAnalysisRef.current = a;
+        }
+      } catch {
+        if (!cancelled) {
+          setModelAnalysis(null);
+          modelAnalysisRef.current = null;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [file, round]);
 
   /* --- primera visita: ¿auriculares? --- */
   React.useEffect(() => {
     if (usesHeadphones === null) setShowHeadphones(true);
   }, [usesHeadphones]);
+
+  const modelContour = React.useMemo(
+    () => (modelAnalysis ? contourForDisplay(modelAnalysis.semitones) : null),
+    [modelAnalysis],
+  );
+  const youContour = React.useMemo(
+    () => (youAnalysis ? contourForDisplay(youAnalysis.semitones) : null),
+    [youAnalysis],
+  );
 
   const roundPeaks = React.useMemo<Peaks | null>(() => {
     if (!peaks || !clip || !round) return peaks;
@@ -310,9 +368,29 @@ export default function PracticePlayerPage() {
     });
     setPhase("compare");
     setRecPct(1);
-    computePeaksFromBlob(result.blob)
-      .then(setYouPeaks)
-      .catch(() => setYouPeaks(null));
+
+    // Análisis de la toma y puntuación frente al modelo.
+    setScoring(true);
+    try {
+      const latency =
+        useSettings.getState().micLatencyOffsetMs ?? defaultLatencyOffsetMs();
+      const takeAnalysis = await analyzeTake(result.blob, latency);
+      setYouAnalysis(takeAnalysis);
+      const modelA = modelAnalysisRef.current;
+      if (modelA) {
+        const sc = scoreRound({
+          model: modelA,
+          take: takeAnalysis,
+          weights: useSettings.getState().scoreWeights,
+        });
+        setRoundScore({ ...sc, tip: buildAdvice(sc) });
+      }
+    } catch {
+      setYouAnalysis(null);
+      setRoundScore(null);
+    } finally {
+      setScoring(false);
+    }
   }
 
   function playMine() {
@@ -327,14 +405,22 @@ export default function PracticePlayerPage() {
     playMine();
   }
 
+  const savedScores = React.useRef<Record<string, number>>({});
+
   async function saveAndContinue() {
     if (!round) return;
+    if (roundScore) savedScores.current[round.id] = roundScore.total;
+
     const t = takes[round.id];
     if (t) {
       const ext = extForMime(t.mime);
       const takeId = uid("tk");
       const path = `recordings/${takeId}.${ext}`;
       await putBlob(path, t.blob, "recording", takeId);
+
+      let analysisRef: string | undefined;
+      if (youAnalysis) analysisRef = await saveTakeAnalysis(takeId, youAnalysis);
+
       await saveTake({
         id: takeId,
         roundId: round.id,
@@ -344,14 +430,31 @@ export default function PracticePlayerPage() {
         durationSec: t.dur,
         latencyOffsetMs:
           useSettings.getState().micLatencyOffsetMs ?? defaultLatencyOffsetMs(),
+        analysisRef,
+        score: roundScore
+          ? {
+              total: roundScore.total,
+              components: roundScore.components,
+              present: roundScore.present,
+              weights: roundScore.weights,
+              engineVersion: roundScore.engineVersion,
+              detail: roundScore.detail,
+              tip: buildAdvice(roundScore),
+            }
+          : undefined,
         kept: true,
       });
     }
+
     if (idx + 1 < total) {
       setIdx(idx + 1);
     } else {
+      const scores = Object.values(savedScores.current);
       await db().practices.update(practiceId, {
         lastPracticedAt: Date.now(),
+        lastScore: scores.length
+          ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+          : undefined,
       });
       router.push(`/resultados/${practiceId}`);
     }
@@ -359,8 +462,7 @@ export default function PracticePlayerPage() {
 
   useShortcuts(
     {
-      playPause: () =>
-        playerRef.current?.playing ? pauseModel() : playModel(false),
+      playPause: () => (playing ? pauseModel() : playModel(false)),
       record: () =>
         phase === "recording"
           ? void stopRecording()
@@ -371,6 +473,7 @@ export default function PracticePlayerPage() {
       next: () => setIdx((i) => Math.min(total - 1, i + 1)),
       loop: () => setLoop((v) => !v),
       toggleText: () => setTextHidden((v) => !v),
+      toggleIpa: () => setShowIntonation((v) => !v),
     },
     phase !== "countdown",
   );
@@ -494,21 +597,30 @@ export default function PracticePlayerPage() {
         </div>
 
         <div className="space-y-3">
-          <Waveform
+          <WaveformPanel
+            label="Modelo"
             peaks={roundPeaks}
+            contour={modelContour}
             progress={modelPos}
             tone={
               phase === "recording"
                 ? "recording"
-                : playerRef.current?.playing
+                : playing
                   ? "playing"
                   : "reference"
             }
-            label="Modelo"
             height={120}
+            showIntonation={showIntonation}
+            onToggleIntonation={() => setShowIntonation((v) => !v)}
           />
-          {(phase === "compare" || youPeaks) && (
-            <Waveform peaks={youPeaks} progress={0} label="Tú" height={96} />
+          {(phase === "compare" || youAnalysis) && (
+            <WaveformPanel
+              label="Tú"
+              peaks={youAnalysis?.peaks ?? null}
+              contour={youContour}
+              height={96}
+              showIntonation={showIntonation}
+            />
           )}
           {peaksNote && <p className="text-xs text-ink-soft">{peaksNote}</p>}
           {phase === "recording" && <DotMeter value={recPct} />}
@@ -524,12 +636,10 @@ export default function PracticePlayerPage() {
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    playerRef.current?.playing ? pauseModel() : playModel(true)
-                  }
+                  onClick={() => (playing ? pauseModel() : playModel(true))}
                   disabled={!file}
                 >
-                  {playerRef.current?.playing ? "Pausar" : "Escuchar modelo"}
+                  {playing ? "Pausar" : "Escuchar modelo"}
                 </Button>
                 <Button
                   variant="outline"
@@ -576,32 +686,58 @@ export default function PracticePlayerPage() {
           )}
 
           {phase === "compare" && (
-            <>
-              <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-4 rounded-xl border-2 border-line bg-surface p-4">
+              <p className="text-sm text-ink-soft">
+                Compara el modelo con tu toma. Guárdala cuando quieras pasar a
+                la siguiente ronda.
+              </p>
+
+              {scoring && (
+                <p className="text-sm font-semibold text-ink-soft">
+                  Analizando tu voz…
+                </p>
+              )}
+              {!scoring && roundScore && (
+                <div className="space-y-2">
+                  <Eyebrow>Coincidencia · ronda {idx + 1}</Eyebrow>
+                  <ScoreBreakdown score={roundScore} />
+                </div>
+              )}
+              {!scoring && !roundScore && youAnalysis && (
+                <p className="text-sm text-ink-soft">
+                  No se ha podido analizar el audio del modelo, así que esta
+                  ronda no lleva nota. Puedes escuchar y comparar igualmente.
+                </p>
+              )}
+
+              <div className="grid grid-cols-3 gap-2">
                 <Button variant="outline" onClick={() => playModel(true)}>
-                  Reproducir modelo
+                  Modelo
                 </Button>
                 <Button variant="outline" onClick={playMine}>
-                  Reproducir la mía
+                  La mía
                 </Button>
                 <Button variant="outline" onClick={playBoth}>
-                  Reproducir juntas
-                </Button>
-                <Button variant="outline" onClick={startCountdown}>
-                  Grabar otra vez
+                  Juntas
                 </Button>
               </div>
               <Button
-                variant="default"
-               
-                className="w-full h-14"
+                variant="outline"
+                className="w-full"
+                onClick={startCountdown}
+              >
+                Grabar otra vez
+              </Button>
+              <Button
+                className="h-14 w-full"
                 onClick={() => void saveAndContinue()}
+                disabled={scoring}
               >
                 {idx + 1 < total
                   ? "Guardar toma y continuar"
                   : "Guardar y ver resumen"}
               </Button>
-            </>
+            </div>
           )}
 
           <div className="flex items-center justify-between text-xs text-ink-soft">

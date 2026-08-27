@@ -2,11 +2,9 @@
 
 import * as React from "react";
 import {
+  CATEGORY_LABEL,
   getStorageBreakdown,
   type StorageBreakdown,
-} from "@/lib/storage/accounting";
-import {
-  CATEGORY_LABEL,
 } from "@/lib/storage/accounting";
 import { Button, Card, Eyebrow, TextInput } from "@/components/ui/primitives";
 import { Dialog, useConfirm } from "@/components/ui/Dialog";

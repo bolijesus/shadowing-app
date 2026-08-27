@@ -40,6 +40,11 @@ import { FileTooLargeToDecode } from "@/lib/audio/decode";
 import { speakWithBrowser, cancelBrowserSpeech } from "@/lib/tts/browser";
 import type { Peaks } from "@/workers/audio-dsp.worker";
 import { putBlob } from "@/lib/storage/blobStore";
+import { readAsBlob } from "@/lib/storage/opfs";
+import {
+  YOUTUBE_LIMITS_NOTE,
+  YouTubeRangePlayer,
+} from "@/lib/youtube/iframe";
 import { saveTake } from "@/lib/db/repositories";
 import { useSettings } from "@/lib/stores/settings";
 import { extForMime, fmtClock, uid } from "@/lib/util";
@@ -91,6 +96,9 @@ export default function PracticePlayerPage() {
   const defaultRate = useSettings((s) => s.defaultRate);
 
   const [file, setFile] = React.useState<Blob | null>(null);
+  const sourceKind = media?.source.kind ?? "local-file";
+  const isYouTube = sourceKind === "youtube";
+  const isTts = sourceKind === "tts";
   const [sourceIssue, setSourceIssue] = React.useState<
     | { kind: "permission"; handle: FileSystemFileHandle; fileName: string }
     | { kind: "missing"; reason: string }
@@ -127,6 +135,8 @@ export default function PracticePlayerPage() {
   const playerRef = React.useRef<RangePlayer | null>(null);
   const recorderRef = React.useRef<VoiceRecorder | null>(null);
   const objectUrlRef = React.useRef<string | null>(null);
+  const ytHostRef = React.useRef<HTMLDivElement>(null);
+  const ytRef = React.useRef<YouTubeRangePlayer | null>(null);
 
   const round = rounds?.[idx];
   const total = rounds?.length ?? 0;
@@ -138,6 +148,13 @@ export default function PracticePlayerPage() {
   /* --- resolver el archivo del medio --- */
   React.useEffect(() => {
     if (!media) return;
+    // YouTube no da bytes (§4.2) y TTS guarda un audio por ronda, no un
+    // archivo único: ninguno de los dos pasa por resolveMediaSource.
+    if (media.source.kind === "youtube" || media.source.kind === "tts") {
+      setFile(null);
+      setSourceIssue(null);
+      return;
+    }
     let cancelled = false;
     (async () => {
       const cached = mediaFileCache.get(media.id);
@@ -168,6 +185,76 @@ export default function PracticePlayerPage() {
       cancelled = true;
     };
   }, [media]);
+
+  /* --- audio generado por TTS de la ronda actual --- */
+  React.useEffect(() => {
+    if (!isTts || !round) return;
+    let cancelled = false;
+    setFile(null);
+    if (!round.modelAudioRef) {
+      setSourceIssue({
+        kind: "missing",
+        reason:
+          "Esta ronda todavía no tiene voz generada. Ábrela en el editor y pulsa «Generar voz».",
+      });
+      return;
+    }
+    setSourceIssue(null);
+    readAsBlob(round.modelAudioRef, "audio/wav")
+      .then((b) => !cancelled && setFile(b))
+      .catch(
+        () =>
+          !cancelled &&
+          setSourceIssue({
+            kind: "missing",
+            reason: "No se encontró el audio generado. Vuelve a generarlo.",
+          }),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [isTts, round]);
+
+  /* --- reproductor de YouTube (sin acceso al audio, §4.2) --- */
+  React.useEffect(() => {
+    if (!isYouTube || !media || media.source.kind !== "youtube") return;
+    const host = ytHostRef.current;
+    if (!host) return;
+    let cancelled = false;
+    const inner = document.createElement("div");
+    host.innerHTML = "";
+    host.appendChild(inner);
+    const yt = new YouTubeRangePlayer();
+    yt.mount(inner, media.source.videoId)
+      .then(() => {
+        if (!cancelled) ytRef.current = yt;
+      })
+      .catch(() => {
+        if (!cancelled)
+          setSourceIssue({
+            kind: "missing",
+            reason: "No se pudo cargar el reproductor de YouTube. ¿Hay conexión?",
+          });
+      });
+    let raf = 0;
+    const tick = () => {
+      setModelPos(yt.position);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      yt.destroy();
+      ytRef.current = null;
+    };
+  }, [isYouTube, media]);
+
+  React.useEffect(() => {
+    if (!isYouTube || !round) return;
+    ytRef.current?.setRange(round.startSec, round.endSec);
+    ytRef.current?.setLoop(loop);
+  }, [isYouTube, round, loop]);
 
   /* --- montar el elemento multimedia + RangePlayer --- */
   React.useEffect(() => {
@@ -211,10 +298,10 @@ export default function PracticePlayerPage() {
     (async () => {
       try {
         const p = await getOrBuildPeaks({
-          clipId: clip.id,
+          clipId: isTts && round ? `${clip.id}_${round.id}` : clip.id,
           file,
-          startSec: clip.startSec,
-          endSec: clip.endSec,
+          startSec: isTts ? 0 : clip.startSec,
+          endSec: isTts ? Number.MAX_SAFE_INTEGER : clip.endSec,
         });
         if (!cancelled) setPeaks(p);
       } catch (e) {
@@ -230,18 +317,20 @@ export default function PracticePlayerPage() {
     return () => {
       cancelled = true;
     };
-  }, [file, clip]);
+  }, [file, clip, isTts, round]);
 
   /* --- rango del RangePlayer para la ronda actual --- */
   React.useEffect(() => {
     if (!playerRef.current || !round) return;
-    playerRef.current.setRange(round.startSec, round.endSec);
+    // En TTS cada ronda es su propio archivo: el rango es todo el blob.
+    if (isTts) playerRef.current.setRange(0, Number.MAX_SAFE_INTEGER);
+    else playerRef.current.setRange(round.startSec, round.endSec);
     playerRef.current.setLoop(loop);
     setPhase("listen");
     setRecPct(0);
     setYouAnalysis(null);
     setRoundScore(null);
-  }, [round, loop]);
+  }, [round, loop, isTts]);
 
   /* --- análisis del modelo de la ronda (F0 + energía), cacheado --- */
   React.useEffect(() => {
@@ -254,8 +343,8 @@ export default function PracticePlayerPage() {
         const a = await getOrBuildRoundAnalysis(
           round.id,
           file,
-          round.startSec,
-          round.endSec,
+          isTts ? 0 : round.startSec,
+          isTts ? Number.MAX_SAFE_INTEGER : round.endSec,
         );
         if (!cancelled) {
           setModelAnalysis(a);
@@ -271,7 +360,7 @@ export default function PracticePlayerPage() {
     return () => {
       cancelled = true;
     };
-  }, [file, round]);
+  }, [file, round, isTts]);
 
   /* --- primera visita: ¿auriculares? --- */
   React.useEffect(() => {
@@ -288,6 +377,7 @@ export default function PracticePlayerPage() {
   );
 
   const roundPeaks = React.useMemo<Peaks | null>(() => {
+    if (isTts) return peaks;
     if (!peaks || !clip || !round) return peaks;
     const clipDur = clip.endSec - clip.startSec || 1;
     const a = Math.max(0, (round.startSec - clip.startSec) / clipDur);
@@ -299,13 +389,23 @@ export default function PracticePlayerPage() {
       durationSec: round.endSec - round.startSec,
       minmax: peaks.minmax.slice(from * 2, to * 2),
     };
-  }, [peaks, clip, round]);
+  }, [peaks, clip, round, isTts]);
 
   function playModel(fromStart = true) {
+    if (isYouTube) {
+      ytRef.current?.play(fromStart);
+      setPlaying(true);
+      return;
+    }
     ensureAudioContext();
     void playerRef.current?.play(fromStart);
   }
   function pauseModel() {
+    if (isYouTube) {
+      ytRef.current?.pause();
+      setPlaying(false);
+      return;
+    }
     playerRef.current?.pause();
   }
 
@@ -596,7 +696,19 @@ export default function PracticePlayerPage() {
           </div>
         </div>
 
-        <div className="space-y-3">
+        {isYouTube && (
+          <div className="space-y-2">
+            <div
+              ref={ytHostRef}
+              className="aspect-video w-full overflow-hidden rounded-xl bg-panel [&_iframe]:h-full [&_iframe]:w-full"
+            />
+            <p className="rounded-lg border-l-4 border-brand bg-brand-tint px-3 py-2 text-xs text-ink">
+              {YOUTUBE_LIMITS_NOTE}
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-3" hidden={isYouTube}>
           <WaveformPanel
             label="Modelo"
             peaks={roundPeaks}
@@ -623,8 +735,19 @@ export default function PracticePlayerPage() {
             />
           )}
           {peaksNote && <p className="text-xs text-ink-soft">{peaksNote}</p>}
-          {phase === "recording" && <DotMeter value={recPct} />}
         </div>
+
+        {isYouTube && (phase === "compare" || youAnalysis) && (
+          <WaveformPanel
+            label="Tú"
+            peaks={youAnalysis?.peaks ?? null}
+            contour={youContour}
+            height={96}
+            showIntonation={showIntonation}
+          />
+        )}
+
+        {phase === "recording" && <DotMeter value={recPct} />}
 
         <div className="mt-auto space-y-3">
           {phase === "countdown" && (
@@ -705,8 +828,9 @@ export default function PracticePlayerPage() {
               )}
               {!scoring && !roundScore && youAnalysis && (
                 <p className="text-sm text-ink-soft">
-                  No se ha podido analizar el audio del modelo, así que esta
-                  ronda no lleva nota. Puedes escuchar y comparar igualmente.
+                  {isYouTube
+                    ? "En modo YouTube no hay audio del modelo, así que no hay nota acústica. Para comparar tu entonación con la del modelo, sube el audio como archivo."
+                    : "No se ha podido analizar el audio del modelo, así que esta ronda no lleva nota. Puedes escuchar y comparar igualmente."}
                 </p>
               )}
 

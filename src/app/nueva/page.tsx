@@ -32,8 +32,10 @@ import {
 import type { Cue, Source } from "@/lib/types";
 import { mediaFileCache } from "@/lib/media/fileCache";
 import { fmtBytes, fmtClock, uid } from "@/lib/util";
+import { TextSourceStep } from "@/components/nueva/TextSourceStep";
+import { YouTubeStep } from "@/components/nueva/YouTubeStep";
 
-type Step = "source" | "file" | "subs" | "range" | "rounds";
+type Step = "source" | "file" | "subs" | "range" | "rounds" | "youtube" | "tts" | "script";
 type FileMode = "handle" | "session" | "opfs";
 
 const LANGS = [
@@ -241,7 +243,10 @@ export default function NuevaPracticaPage() {
 
   return (
     <div className="space-y-5">
-      <ol className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs font-bold">
+      <ol
+        className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs font-bold"
+        hidden={step === "youtube" || step === "tts" || step === "script"}
+      >
         {(["source", "file", "subs", "range", "rounds"] as Step[]).map((s, i) => (
           <li
             key={s}
@@ -289,19 +294,43 @@ export default function NuevaPracticaPage() {
                 Disponible ahora →
               </p>
             </button>
-            {[
-              ["YouTube", "Reproducción y ejercicios de texto."],
-              ["Texto con voz IA", "Genera las voces con TTS."],
-              ["Pegar guion", "Un guion se divide en frases."],
-            ].map(([t, d]) => (
-              <div
-                key={t}
-                className="rounded-xl border-2 border-dashed border-line-strong p-5 text-left"
+            {(
+              [
+                [
+                  "youtube",
+                  "YouTube",
+                  "Reproducción por rangos y ejercicios de texto.",
+                  "Sin onda del modelo",
+                ],
+                [
+                  "tts",
+                  "Texto con voz IA",
+                  "Escribe las frases y genera las voces con TTS.",
+                  null,
+                ],
+                [
+                  "script",
+                  "Pegar guion",
+                  "Un guion se divide en frases automáticamente.",
+                  null,
+                ],
+              ] as const
+            ).map(([target, t, d, warn]) => (
+              <button
+                key={target}
+                onClick={() => setStep(target as Step)}
+                className="rounded-xl border-2 border-line bg-surface p-5 text-left transition-colors hover:border-ink hover:bg-panel"
               >
-                <p className="h-display text-lg text-ink-soft">{t}</p>
+                <p className="h-display text-lg">{t}</p>
                 <p className="mt-1 text-sm text-ink-soft">{d}</p>
-                <Pill className="mt-2">Próximamente</Pill>
-              </div>
+                {warn ? (
+                  <Pill className="mt-2">{warn}</Pill>
+                ) : (
+                  <p className="mt-2 text-xs font-bold text-brand-ink">
+                    Disponible ahora →
+                  </p>
+                )}
+              </button>
             ))}
           </div>
         </section>
@@ -495,6 +524,18 @@ export default function NuevaPracticaPage() {
         </section>
       )}
 
+      {step === "youtube" && (
+        <YouTubeStep language={language} onBack={() => setStep("source")} />
+      )}
+
+      {(step === "tts" || step === "script") && (
+        <TextSourceStep
+          variant={step === "tts" ? "tts" : "script"}
+          language={language}
+          onBack={() => setStep("source")}
+        />
+      )}
+
       {step === "rounds" && (
         <section className="space-y-4">
           <Eyebrow>Paso 5 · Rondas y actividad</Eyebrow>
@@ -575,6 +616,9 @@ const STEP_ORDER: Record<Step, number> = {
   subs: 2,
   range: 3,
   rounds: 4,
+  youtube: 1,
+  tts: 1,
+  script: 1,
 };
 const STEP_LABEL: Record<Step, string> = {
   source: "Origen",
@@ -582,4 +626,7 @@ const STEP_LABEL: Record<Step, string> = {
   subs: "Subtítulos",
   range: "Rango",
   rounds: "Rondas",
+  youtube: "YouTube",
+  tts: "Voz IA",
+  script: "Guion",
 };

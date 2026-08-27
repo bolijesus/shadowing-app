@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build --webpack",
+    "dev": "SERWIST_SUPPRESS_TURBOPACK_WARNING=1 next dev --webpack",
+    "build": "SERWIST_SUPPRESS_TURBOPACK_WARNING=1 next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },

@@ -218,7 +218,14 @@ export function wordsScore(hyp: string, ref: string): number {
   return Math.round(Math.max(0, Math.min(100, 100 * (1 - wordErrorRate(hyp, ref)))));
 }
 
-/** Curva lista para pintar: semitonos remuestreados al ancho de la onda. */
+/**
+ * Curva lista para pintar: semitonos remuestreados al ancho de la onda.
+ *
+ * Ojo con la diferencia: para PUNTUAR se usan `semitones` con sus huecos
+ * (§6.2 prohíbe interpolar a través de las pausas, porque falsearía el DTW).
+ * Esto es solo para DIBUJAR, y ahí sí se quiere un trazo continuo de borde
+ * a borde: se rellenan los huecos y se mantiene plano en los extremos.
+ */
 export function contourForDisplay(
   semitones: Float32Array,
   points = 220,
@@ -226,11 +233,40 @@ export function contourForDisplay(
   // Media por bin: reducir con interpolación lineal propagaba los NaN y
   // ensanchaba cada hueco, que es lo que rompía la línea en trocitos.
   const r = resampleMean(semitones, points);
-  // Escala a [-1, 1] con ±8 semitonos como fondo de escala.
+
   const out = new Float32Array(r.length);
+  // Escala a [-1, 1] con ±8 semitonos como fondo de escala.
   for (let i = 0; i < r.length; i++) {
     const v = r[i]!;
     out[i] = Number.isNaN(v) ? NaN : Math.max(-1, Math.min(1, v / 8));
+  }
+
+  const firstVoiced = out.findIndex((v) => !Number.isNaN(v));
+  if (firstVoiced === -1) return out.fill(0);
+
+  let lastVoiced = out.length - 1;
+  while (lastVoiced > 0 && Number.isNaN(out[lastVoiced]!)) lastVoiced--;
+
+  // Extremos planos, como en el diseño de referencia.
+  out.fill(out[firstVoiced]!, 0, firstVoiced);
+  out.fill(out[lastVoiced]!, lastVoiced + 1);
+
+  // Huecos interiores: se cosen linealmente entre los extremos con voz.
+  let gap = -1;
+  for (let i = firstVoiced; i <= lastVoiced; i++) {
+    if (Number.isNaN(out[i]!)) {
+      if (gap === -1) gap = i;
+      continue;
+    }
+    if (gap > 0) {
+      const len = i - gap;
+      const a = out[gap - 1]!;
+      const b = out[i]!;
+      for (let k = 0; k < len; k++) {
+        out[gap + k] = a + ((b - a) * (k + 1)) / (len + 1);
+      }
+    }
+    gap = -1;
   }
   return out;
 }

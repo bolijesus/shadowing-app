@@ -59,7 +59,7 @@ export function Waveform({
     const ink = css.getPropertyValue("--ink").trim() || "#14141a";
     const hot = tone === "recording" || tone === "playing";
     const mid = height / 2;
-    const maxAmp = mid - 6;
+    const maxAmp = mid - 8;
 
     if (!peaks || peaks.buckets === 0) {
       ctx.strokeStyle = gray;
@@ -95,6 +95,16 @@ export function Waveform({
       ctx.closePath();
     };
 
+    // Eje tenue de borde a borde.
+    ctx.strokeStyle = gray;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, mid);
+    ctx.lineTo(width, mid);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
     // Parte no reproducida.
     buildPath();
     ctx.save();
@@ -103,7 +113,7 @@ export function Waveform({
     ctx.clip();
     buildPath();
     ctx.fillStyle = gray;
-    ctx.globalAlpha = hot ? 0.4 : 0.85;
+    ctx.globalAlpha = hot ? 0.35 : 0.6;
     ctx.fill();
     ctx.restore();
 
@@ -118,47 +128,36 @@ export function Waveform({
     ctx.fill();
     ctx.restore();
 
-    // Línea de entonación (F0): un trazo continuo por tramo con voz.
+    // Línea de entonación (F0): un único trazo fino y continuo de borde a
+    // borde. `contourForDisplay` ya entrega la curva sin huecos.
     if (f0 && f0.length > 1) {
       const toX = (i: number) => (i / (f0.length - 1)) * width;
-      const toY = (v: number) => mid - Math.max(-1, Math.min(1, v)) * (maxAmp * 0.8);
+      const toY = (v: number) =>
+        mid - Math.max(-1, Math.min(1, v)) * (maxAmp * 0.62);
 
-      // Se agrupan los puntos en tramos contiguos y se descartan los de un
-      // solo punto, que se verían como motas sueltas en vez de como línea.
-      const runs: { x: number; y: number }[][] = [];
-      let run: { x: number; y: number }[] = [];
+      const pts: { x: number; y: number }[] = [];
       for (let i = 0; i < f0.length; i++) {
         const v = f0[i]!;
-        if (Number.isNaN(v)) {
-          if (run.length > 1) runs.push(run);
-          run = [];
-        } else {
-          run.push({ x: toX(i), y: toY(v) });
-        }
+        if (!Number.isNaN(v)) pts.push({ x: toX(i), y: toY(v) });
       }
-      if (run.length > 1) runs.push(run);
 
-      ctx.strokeStyle = ink;
-      ctx.lineWidth = 2;
-      ctx.lineJoin = "round";
-      ctx.lineCap = "round";
-      ctx.globalAlpha = 0.95;
-
-      for (const pts of runs) {
+      if (pts.length > 1) {
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = 1.25;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
         ctx.beginPath();
         ctx.moveTo(pts[0]!.x, pts[0]!.y);
-        // Curva por puntos medios: suaviza los saltos entre tramas sin
-        // desplazar el contorno real.
+        // Curva por puntos medios: suaviza sin desplazar el contorno real.
         for (let i = 1; i < pts.length - 1; i++) {
-          const p = pts[i]!;
-          const n = pts[i + 1]!;
-          ctx.quadraticCurveTo(p.x, p.y, (p.x + n.x) / 2, (p.y + n.y) / 2);
+          const c = pts[i]!;
+          const nx = pts[i + 1]!;
+          ctx.quadraticCurveTo(c.x, c.y, (c.x + nx.x) / 2, (c.y + nx.y) / 2);
         }
         const last = pts[pts.length - 1]!;
         ctx.lineTo(last.x, last.y);
         ctx.stroke();
       }
-      ctx.globalAlpha = 1;
     }
 
     // Cursor de progreso.

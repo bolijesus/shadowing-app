@@ -10,8 +10,21 @@ export class RangePlayer {
   private end = 0;
   private loop = false;
   private onEndCb: (() => void) | null = null;
+
+  /**
+   * Fin efectivo del rango. Quien reproduce un medio entero (una voz TTS,
+   * una toma) pasa un `endSec` centinela; aquí se resuelve a la duración
+   * real en cuanto el navegador la conoce, para que el progreso avance.
+   */
+  private get limit(): number {
+    if (this.end < Number.MAX_SAFE_INTEGER) return this.end;
+    return isFinite(this.el.duration) && this.el.duration > 0
+      ? this.el.duration
+      : this.end;
+  }
+
   private tick = () => {
-    if (this.el.currentTime >= this.end - 0.02) {
+    if (this.el.currentTime >= this.limit - 0.02) {
       if (this.loop) {
         this.el.currentTime = this.start;
       } else {
@@ -51,10 +64,20 @@ export class RangePlayer {
   }
 
   async play(fromStart = false) {
-    if (fromStart || this.el.currentTime < this.start || this.el.currentTime >= this.end) {
+    if (
+      fromStart ||
+      this.el.currentTime < this.start ||
+      this.el.currentTime >= this.limit
+    ) {
       this.el.currentTime = this.start;
     }
-    await this.el.play();
+    try {
+      await this.el.play();
+    } catch (e) {
+      // Encadenar play() y pause() rápido aborta la promesa anterior; es
+      // esperado al saltar de ronda o al comparar pistas, no un fallo.
+      if ((e as DOMException)?.name !== "AbortError") throw e;
+    }
   }
 
   pause() {
@@ -71,7 +94,9 @@ export class RangePlayer {
   }
 
   get position() {
-    return Math.min(1, Math.max(0, (this.el.currentTime - this.start) / (this.end - this.start || 1)));
+    const span = this.limit - this.start;
+    if (!isFinite(span) || span <= 0) return 0;
+    return Math.min(1, Math.max(0, (this.el.currentTime - this.start) / span));
   }
 
   onEnded(cb: () => void) {

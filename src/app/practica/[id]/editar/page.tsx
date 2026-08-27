@@ -171,12 +171,19 @@ export default function EditPracticePage() {
   }
 
   const save = async () => {
+    // Si el estado local aún no está poblado, no se toca nada: escribir
+    // `?? ""` aquí borraría el texto de las rondas.
+    if (!order.length) {
+      router.push(`/practica/${id}`);
+      return;
+    }
     await db().transaction("rw", db().practices, db().rounds, async () => {
       await db().practices.update(id, { roundIds: order });
       await Promise.all(
-        order.map((rid, index) =>
-          db().rounds.update(rid, { index, text: texts[rid] ?? "" }),
-        ),
+        order.map((rid, index) => {
+          const text = texts[rid] ?? byId.get(rid)?.text ?? "";
+          return db().rounds.update(rid, { index, text });
+        }),
       );
     });
     setDirty(false);
@@ -360,13 +367,18 @@ export default function EditPracticePage() {
         })}
       </ol>
 
-      <div className="sticky bottom-20 flex gap-2 sm:bottom-4">
-        <Button onClick={save} disabled={!dirty}>
-          Guardar cambios
-        </Button>
+      <div className="sticky bottom-20 flex flex-wrap items-center gap-2 sm:bottom-4">
+        {/* Generar una voz ya persiste la ronda, así que este botón nunca
+            se bloquea: guarda orden y textos (idempotente) y sigue. */}
+        <Button onClick={save}>Guardar y practicar →</Button>
         <Link href={`/practica/${id}`}>
-          <Button variant="outline">Descartar</Button>
+          <Button variant="outline">Practicar sin guardar</Button>
         </Link>
+        {dirty && (
+          <span className="text-xs font-semibold text-brand-ink">
+            Tienes cambios sin guardar
+          </span>
+        )}
       </div>
     </div>
   );
@@ -399,7 +411,7 @@ function PlayGenerated({ path }: { path: string }) {
       variant="outline"
       size="sm"
       disabled={!url}
-      onClick={() => url && void new Audio(url).play()}
+      onClick={() => url && void new Audio(url).play().catch(() => {})}
     >
       Escuchar
     </Button>

@@ -498,7 +498,7 @@ export default function PracticePlayerPage() {
     const t = takes[round.id];
     if (!t) return;
     const a = new Audio(t.url);
-    void a.play();
+    void a.play().catch(() => {});
   }
   function playBoth() {
     playModel(true);

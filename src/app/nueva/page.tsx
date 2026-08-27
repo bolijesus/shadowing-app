@@ -487,7 +487,7 @@ export default function NuevaPracticaPage() {
               if (!el || !file) return;
               if (!el.src) el.src = URL.createObjectURL(file);
               el.currentTime = range.start;
-              await el.play();
+              await el.play().catch(() => {});
               const stop = () => {
                 if (el.currentTime >= range.end) {
                   el.pause();

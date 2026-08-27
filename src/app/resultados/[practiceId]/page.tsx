@@ -365,7 +365,7 @@ function RoundDetail({
     void playerRef.current?.play(true);
   };
   const playMine = () => {
-    if (url) void new Audio(url).play();
+    if (url) void new Audio(url).play().catch(() => {});
   };
 
   const score = take?.score as RoundScore | undefined;

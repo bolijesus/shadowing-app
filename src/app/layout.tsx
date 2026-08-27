@@ -34,7 +34,14 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es" className={cn("font-sans", geist.variable)}>
+    // El script de arranque escribe data-theme y --app-font-size antes de
+    // hidratar, para que no haya parpadeo de tema. Eso hace que el HTML del
+    // cliente difiera del servidor a propósito: se silencia solo aquí.
+    <html
+      lang="es"
+      className={cn("font-sans", geist.variable)}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: bootstrap }} />
       </head>

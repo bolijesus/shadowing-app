@@ -40,6 +40,7 @@ import { WaveformPanel } from "@/components/waveform/WaveformPanel";
 import { ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
 import { CurveDuel } from "@/components/games/CurveDuel";
 import { ContourCompare } from "@/components/waveform/ContourCompare";
+import { WaveCompare } from "@/components/waveform/WaveCompare";
 import {
   FileTooLargeToDecode,
   SLOW_DECODE_BYTES,
@@ -1036,8 +1037,17 @@ export default function PracticePlayerPage() {
                   Analizando tu voz…
                 </p>
               )}
-              {/* Las dos curvas superpuestas: en paneles separados hay que
-                  compararlas de memoria y no se ve DÓNDE te separas. */}
+              {/* Superpuestas: en paneles separados hay que compararlas de
+                  memoria y no se ve DÓNDE te separas. Primero el ritmo, que
+                  es lo más fácil de corregir, y después la entonación. */}
+              {!scoring && youAnalysis && (
+                <WaveCompare
+                  model={roundPeaks}
+                  take={youAnalysis.peaks}
+                  height={130}
+                />
+              )}
+
               {!scoring && youAnalysis && modelContour && showIntonation && (
                 <ContourCompare
                   model={modelContour}

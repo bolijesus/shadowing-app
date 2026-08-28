@@ -10,6 +10,8 @@ import { Button, Eyebrow, EmptyState } from "@/components/ui/primitives";
 import { SegmentedProgress } from "@/components/practice/SegmentedProgress";
 import { PhraseWithIpa } from "@/components/practice/PhraseWithIpa";
 import { WaveformPanel } from "@/components/waveform/WaveformPanel";
+import { WaveCompare } from "@/components/waveform/WaveCompare";
+import { ContourCompare } from "@/components/waveform/ContourCompare";
 import { BigScore, ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
 import { readAsObjectURL } from "@/lib/storage/opfs";
 import {
@@ -396,22 +398,42 @@ function RoundDetail({
   return (
     <div className="space-y-4">
       <div className="space-y-3">
-        <WaveformPanel
-          label="Modelo"
-          peaks={modelA?.peaks ?? null}
-          contour={modelContour}
-          progress={modelPos}
-          height={110}
-          showIntonation={showIntonation}
-          onToggleIntonation={onToggleIntonation}
-        />
-        {takeA && (
+        {/* Con toma grabada se comparan superpuestas; sin ella basta el
+            panel del modelo con su cursor de reproducción. */}
+        {takeA ? (
+          <>
+            <WaveCompare
+              model={modelA?.peaks ?? null}
+              take={takeA.peaks}
+              height={130}
+            />
+            {showIntonation && modelContour && (
+              <ContourCompare
+                model={modelContour}
+                take={takeContour}
+                height={140}
+              />
+            )}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onToggleIntonation}
+                aria-pressed={showIntonation}
+                className="text-xs font-bold text-brand-ink underline underline-offset-4 hover:text-ink"
+              >
+                {showIntonation ? "Ocultar entonación" : "Mostrar entonación"}
+              </button>
+            </div>
+          </>
+        ) : (
           <WaveformPanel
-            label="Tú"
-            peaks={takeA.peaks}
-            contour={takeContour}
-            height={92}
+            label="Modelo"
+            peaks={modelA?.peaks ?? null}
+            contour={modelContour}
+            progress={modelPos}
+            height={110}
             showIntonation={showIntonation}
+            onToggleIntonation={onToggleIntonation}
           />
         )}
       </div>

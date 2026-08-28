@@ -15,6 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SegmentedProgress } from "@/components/practice/SegmentedProgress";
+import { SpeedControl } from "@/components/practice/SpeedControl";
+import { PhraseWithIpa } from "@/components/practice/PhraseWithIpa";
 import { Countdown } from "@/components/practice/Countdown";
 import { useShortcuts } from "@/lib/keyboard/useShortcuts";
 import { RangePlayer } from "@/lib/audio/rangePlayer";
@@ -94,6 +96,7 @@ export default function PracticePlayerPage() {
   const usesHeadphones = useSettings((s) => s.usesHeadphones);
   const setSetting = useSettings((s) => s.set);
   const defaultRate = useSettings((s) => s.defaultRate);
+  const rateRef = React.useRef(1);
 
   const [file, setFile] = React.useState<Blob | null>(null);
   const sourceKind = media?.source.kind ?? "local-file";
@@ -111,6 +114,7 @@ export default function PracticePlayerPage() {
   const [phase, setPhase] = React.useState<Phase>("listen");
   const [modelPos, setModelPos] = React.useState(0);
   const [playing, setPlaying] = React.useState(false);
+  const [rate, setRate] = React.useState(1);
   const [recPct, setRecPct] = React.useState(0);
   const [loop, setLoop] = React.useState(false);
   const loopRef = React.useRef(false);
@@ -122,6 +126,7 @@ export default function PracticePlayerPage() {
   const [modelAnalysis, setModelAnalysis] = React.useState<Analysis | null>(null);
   const modelAnalysisRef = React.useRef<Analysis | null>(null);
   const [showIntonation, setShowIntonation] = React.useState(true);
+  const [showIpa, setShowIpa] = React.useState(false);
   const [scoring, setScoring] = React.useState(false);
   const [roundScore, setRoundScore] = React.useState<
     ReturnType<typeof scoreRound> | null
@@ -139,6 +144,11 @@ export default function PracticePlayerPage() {
   const desiredRangeRef = React.useRef<[number, number]>([0, 0]);
   const ytHostRef = React.useRef<HTMLDivElement>(null);
   const ytRef = React.useRef<YouTubeRangePlayer | null>(null);
+
+  React.useEffect(() => {
+    setRate(defaultRate);
+    rateRef.current = defaultRate;
+  }, [defaultRate]);
 
   const round = rounds?.[idx];
   const total = rounds?.length ?? 0;
@@ -270,7 +280,7 @@ export default function PracticePlayerPage() {
     el.preload = "auto";
     mediaElRef.current = el;
     const rp = new RangePlayer(el);
-    rp.playbackRate = defaultRate;
+    rp.playbackRate = rateRef.current;
     rp.onEnded(() => setPhase((p) => (p === "listen" ? "listen" : p)));
     // Al llegar el audio se crea un reproductor nuevo: hay que darle el
     // rango de la ronda aquí, o se quedaría con [0, 0] y se pausaría solo.
@@ -294,7 +304,7 @@ export default function PracticePlayerPage() {
       playerRef.current = null;
       mediaElRef.current = null;
     };
-  }, [file, media, defaultRate]);
+  }, [file, media]);
 
   /* --- construir picos del recorte --- */
   React.useEffect(() => {
@@ -405,6 +415,14 @@ export default function PracticePlayerPage() {
       minmax: peaks.minmax.slice(from * 2, to * 2),
     };
   }, [peaks, clip, round, isTts]);
+
+  function applyRate(v: number) {
+    setRate(v);
+    rateRef.current = v;
+    // preservesPitch evita el efecto "ardilla" y conserva la entonación (§13.4).
+    if (playerRef.current) playerRef.current.playbackRate = v;
+    ytRef.current?.setRate(v);
+  }
 
   function playModel(fromStart = true) {
     if (isYouTube) {
@@ -588,7 +606,7 @@ export default function PracticePlayerPage() {
       next: () => setIdx((i) => Math.min(total - 1, i + 1)),
       loop: () => setLoop((v) => !v),
       toggleText: () => setTextHidden((v) => !v),
-      toggleIpa: () => setShowIntonation((v) => !v),
+      toggleIpa: () => setShowIpa((v) => !v),
     },
     phase !== "countdown",
   );
@@ -689,25 +707,32 @@ export default function PracticePlayerPage() {
               <p className="eyebrow">{practice.title}</p>
               <h1 className="h-display mt-1 text-2xl">Imita al modelo</h1>
             </div>
-            <button
-              onClick={() => setTextHidden((v) => !v)}
-              className="shrink-0 rounded-lg border-2 border-line-strong bg-surface px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
-            >
-              {textOpacity === 0 ? "Mostrar texto" : "Ocultar texto"}
-            </button>
+            <div className="flex shrink-0 gap-2">
+              <button
+                onClick={() => setShowIpa((v) => !v)}
+                aria-pressed={showIpa}
+                className="rounded-lg border-2 border-line-strong bg-surface px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
+              >
+                {showIpa ? "Ocultar IPA" : "Ver IPA"}
+              </button>
+              <button
+                onClick={() => setTextHidden((v) => !v)}
+                className="rounded-lg border-2 border-line-strong bg-surface px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
+              >
+                {textOpacity === 0 ? "Mostrar texto" : "Ocultar texto"}
+              </button>
+            </div>
           </div>
           <div
             className="mt-3 rounded-xl bg-panel p-5 transition-opacity"
             style={{ opacity: textOpacity || 0.001 }}
             aria-hidden={textOpacity === 0}
           >
-            <p className="text-[22px] font-extrabold leading-snug text-ink">
-              {round?.text || (
-                <span className="text-ink-soft">
-                  (sin texto para esta ronda)
-                </span>
-              )}
-            </p>
+            <PhraseWithIpa
+              text={round?.text ?? ""}
+              language={media?.language ?? "en-US"}
+              showIpa={showIpa}
+            />
           </div>
         </div>
 
@@ -786,6 +811,9 @@ export default function PracticePlayerPage() {
                 >
                   {loop ? "Bucle: activado" : "Bucle A–B"}
                 </Button>
+                <div className="col-span-2 flex justify-center">
+                  <SpeedControl value={rate} onChange={applyRate} />
+                </div>
                 <Button
                   variant="outline"
                   className="col-span-2"

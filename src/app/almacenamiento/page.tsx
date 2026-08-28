@@ -22,6 +22,8 @@ import {
   deleteUnsavedTakes,
 } from "@/lib/db/repositories";
 import { wipeAllData } from "@/lib/storage/wipe";
+import { clearTtsCache } from "@/lib/tts/cache";
+import { clearIpaCache } from "@/lib/ipa";
 import { ensurePersistentStorage } from "@/lib/storage/persist";
 import { fmtBytes, fmtDate } from "@/lib/util";
 
@@ -217,10 +219,38 @@ export default function StoragePage() {
           >
             Borrar solo tomas no guardadas
           </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const n = await clearTtsCache();
+              await refresh();
+              await confirm({
+                title: "Hecho",
+                body: `${n} voces generadas borradas. Se volverán a pedir a la API cuando hagan falta.`,
+                confirmLabel: "Vale",
+              });
+            }}
+          >
+            Vaciar caché de voces IA
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const n = await clearIpaCache();
+              await refresh();
+              await confirm({
+                title: "Hecho",
+                body: `${n} transcripciones fonéticas borradas.`,
+                confirmLabel: "Vale",
+              });
+            }}
+          >
+            Vaciar caché de IPA
+          </Button>
         </div>
-        <Button className="w-full"
+        <Button
+          className="w-full"
           variant="record"
-         
           onClick={() => {
             setWipeWord("");
             setWipeOpen(true);

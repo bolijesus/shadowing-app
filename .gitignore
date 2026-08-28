@@ -49,3 +49,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# espeak-ng auto-hospedado: se copia desde node_modules en el postinstall.
+# 18 MB no tienen por qué vivir en el repo.
+/public/espeak/

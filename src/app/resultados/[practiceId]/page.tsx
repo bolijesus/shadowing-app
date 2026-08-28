@@ -8,6 +8,7 @@ import { db } from "@/lib/db/db";
 import type { Clip, MediaItem, Round, Take } from "@/lib/types";
 import { Button, Eyebrow, EmptyState } from "@/components/ui/primitives";
 import { SegmentedProgress } from "@/components/practice/SegmentedProgress";
+import { PhraseWithIpa } from "@/components/practice/PhraseWithIpa";
 import { WaveformPanel } from "@/components/waveform/WaveformPanel";
 import { BigScore, ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
 import { readAsObjectURL } from "@/lib/storage/opfs";
@@ -64,6 +65,7 @@ export default function ResultsPage() {
   const [idx, setIdx] = React.useState(0);
   const [textHidden, setTextHidden] = React.useState(false);
   const [showIntonation, setShowIntonation] = React.useState(true);
+  const [showIpa, setShowIpa] = React.useState(false);
   const [file, setFile] = React.useState<Blob | null>(null);
 
   const latestByRound = React.useMemo(() => {
@@ -204,13 +206,23 @@ export default function ResultsPage() {
                 Revisión de la ronda {idx + 1}
               </h2>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setTextHidden((v) => !v)}
-            >
-              {textHidden ? "Mostrar texto" : "Ocultar texto"}
-            </Button>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                aria-pressed={showIpa}
+                onClick={() => setShowIpa((v) => !v)}
+              >
+                {showIpa ? "Ocultar IPA" : "Ver IPA"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTextHidden((v) => !v)}
+              >
+                {textHidden ? "Mostrar texto" : "Ocultar texto"}
+              </Button>
+            </div>
           </div>
 
           <div
@@ -218,11 +230,11 @@ export default function ResultsPage() {
             style={{ opacity: textHidden ? 0.001 : 1 }}
             aria-hidden={textHidden}
           >
-            <p className="text-[22px] font-extrabold leading-snug text-ink">
-              {round.text || (
-                <span className="text-ink-soft">(sin texto para esta ronda)</span>
-              )}
-            </p>
+            <PhraseWithIpa
+              text={round.text}
+              language={media?.language ?? "en-US"}
+              showIpa={showIpa}
+            />
           </div>
 
           <RoundDetail

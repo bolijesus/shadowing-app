@@ -9,7 +9,12 @@ import type { Analysis } from "@/workers/audio-dsp.worker";
  * inventa — se omite y el total se renormaliza sobre los presentes.
  */
 
-export const ENGINE_VERSION = 2;
+/**
+ * 2 → 3: entra el componente `words`, que necesita ASR. Las notas anteriores
+ * se calcularon sin él y renormalizadas sobre cuatro componentes, así que no
+ * son comparables con las nuevas: las estadísticas deben agrupar por esto.
+ */
+export const ENGINE_VERSION = 3;
 
 export type ComponentKey =
   | "words"

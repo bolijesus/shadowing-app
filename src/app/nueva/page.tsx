@@ -34,6 +34,12 @@ import {
 } from "@/lib/db/repositories";
 import type { Cue, PracticeMode, Source } from "@/lib/types";
 import { builtModes, modeMeta } from "@/lib/practice/modes";
+import {
+  transcribe,
+  cuesFromWords,
+  engineDownloadMb,
+  selectedEngine,
+} from "@/lib/asr";
 import { mediaFileCache } from "@/lib/media/fileCache";
 import { fmtBytes, fmtClock, uid } from "@/lib/util";
 import { TextSourceStep } from "@/components/nueva/TextSourceStep";
@@ -81,6 +87,7 @@ export default function NuevaPracticaPage() {
   );
   const [phrasesPerRound, setPhrasesPerRound] = React.useState(1);
   const [mode, setMode] = React.useState<PracticeMode>("shadowing-echo");
+  const [asrBusy, setAsrBusy] = React.useState<string | null>(null);
 
   const previewRef = React.useRef<HTMLMediaElement | null>(null);
   const previewUrlRef = React.useRef<string | null>(null);
@@ -225,6 +232,53 @@ export default function NuevaPracticaPage() {
       start: parsed[0]!.start,
       end: Math.min(duration || parsed[parsed.length - 1]!.end, parsed[0]!.start + 60),
     });
+  }
+
+  /**
+   * Genera los subtítulos con ASR (§4.1). Se transcribe solo el rango
+   * elegido, no el archivo entero: en un capítulo de 22 minutos la
+   * diferencia es de minutos de espera.
+   */
+  async function generateTranscript() {
+    if (!file) return;
+    setError(null);
+    setAsrBusy("Preparando el motor…");
+    try {
+      const { extractRangeAsWav } = await import("@/lib/audio/extract");
+      const from = range.start;
+      const to = range.end > range.start ? range.end : duration;
+      const wav = await extractRangeAsWav(file, from, to);
+
+      setAsrBusy("Transcribiendo…");
+      const res = await transcribe(wav, language, {
+        onProgress: (p) =>
+          setAsrBusy(
+            typeof p.progress === "number"
+              ? `Descargando el modelo… ${Math.round(p.progress)}%`
+              : "Transcribiendo…",
+          ),
+      });
+      if (!res || !res.text.trim()) {
+        setError(
+          "El motor no reconoció nada en ese tramo. Prueba con otro rango o sube un .srt.",
+        );
+        return;
+      }
+
+      // Con tiempos por palabra se agrupa en frases; si no, se reparte.
+      const made: Cue[] = res.words?.length
+        ? cuesFromWords(res.words, from)
+        : [{ start: from, end: to, text: res.text.trim() }];
+      setCues(made);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? `No se pudo transcribir: ${e.message}`
+          : "No se pudo transcribir.",
+      );
+    } finally {
+      setAsrBusy(null);
+    }
   }
 
   function applyManualText() {
@@ -498,6 +552,22 @@ export default function NuevaPracticaPage() {
                 {cues.length} líneas reconocidas.
               </p>
             )}
+          </Card>
+
+          <Card className="space-y-3">
+            <p className="font-bold">…o genera la transcripción con IA</p>
+            <p className="text-sm text-ink-soft">
+              Se transcribe solo el tramo que hayas elegido, no el archivo
+              entero. Con Whisper local funciona sin conexión y sin coste; la
+              primera vez descarga el modelo ({engineDownloadMb(selectedEngine())} MB).
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => void generateTranscript()}
+              disabled={!!asrBusy || !file}
+            >
+              {asrBusy ?? "Generar transcripción"}
+            </Button>
           </Card>
 
           <Card className="space-y-3">

@@ -1,3 +1,9 @@
 allowBuilds:
+  # Ambos son de servidor y esta app corre entera en el navegador:
+  # transformers.js usa onnxruntime-web, no el binario nativo de Node, y
+  # `sharp` solo haría falta para procesar imágenes fuera del navegador.
+  # Compilarlos sería descargar binarios que nunca se ejecutan.
+  onnxruntime-node: false
+  protobufjs: false
   sharp: false
   unrs-resolver: false

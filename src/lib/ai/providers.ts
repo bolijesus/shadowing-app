@@ -21,7 +21,7 @@ export const PROVIDERS: ProviderMeta[] = [
     keyless: true,
     models: [],
     docsNote:
-      "TTS: speechSynthesis, gratis y offline. ASR: SpeechRecognition (solo Chrome; envía audio a Google).",
+      "TTS: speechSynthesis, gratis y sin conexión. ASR: SpeechRecognition — solo Chrome, solo escucha en directo (no sirve para puntuar una toma ya grabada) y ENVÍA TU VOZ A GOOGLE.",
   },
   {
     id: "whisper-local",
@@ -30,7 +30,7 @@ export const PROVIDERS: ProviderMeta[] = [
     keyless: true,
     models: ["Xenova/whisper-tiny", "Xenova/whisper-base"],
     docsNote:
-      "Se descarga una vez (~40–150 MB) y funciona offline. Se activa en la fase de IA.",
+      "Se descarga una vez (40–82 MB según el modelo) y luego funciona sin conexión. Tu voz no sale del dispositivo. Es el motor por defecto.",
   },
   {
     id: "openai",

@@ -16,6 +16,55 @@ import {
   type WordSpan,
 } from "@/lib/text/wordTiming";
 
+/**
+ * Casa las palabras del texto con las que devolvió el ASR.
+ *
+ * No se pueden emparejar por índice a secas: el reconocedor puede partir o
+ * juntar palabras, o colarse alguna. Se avanza en paralelo comparando formas
+ * normalizadas, y si el desajuste es grande se renuncia y se usa el reparto
+ * aproximado, que es más honesto que un karaoke desalineado.
+ */
+function alignTimings(
+  words: string[],
+  timings: { text: string; start: number; end: number }[],
+): WordSpan[] | null {
+  const norm = (w: string) =>
+    w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+
+  const out: WordSpan[] = [];
+  let t = 0;
+  let matched = 0;
+
+  for (let i = 0; i < words.length; i++) {
+    const want = norm(words[i]!);
+    let found = -1;
+    // Se busca en una ventana corta para tolerar inserciones del ASR.
+    for (let k = t; k < Math.min(timings.length, t + 3); k++) {
+      if (norm(timings[k]!.text) === want && want) {
+        found = k;
+        break;
+      }
+    }
+    if (found >= 0) {
+      out.push({
+        index: i,
+        startSec: timings[found]!.start,
+        endSec: timings[found]!.end,
+      });
+      t = found + 1;
+      matched++;
+    } else {
+      // Sin correspondencia: se rellena entre la anterior y la siguiente.
+      const prev = out[out.length - 1];
+      const start = prev ? prev.endSec : (timings[t]?.start ?? 0);
+      out.push({ index: i, startSec: start, endSec: start });
+    }
+  }
+
+  // Con menos de dos tercios emparejados no es fiable.
+  return matched / words.length >= 0.66 ? out : null;
+}
+
 /** Abreviaturas que acaban en punto sin cerrar frase. */
 const ABBREV = new Set([
   "mr.", "mrs.", "ms.", "dr.", "prof.", "st.", "vs.", "etc.", "jr.", "sr.",
@@ -47,6 +96,7 @@ export function PhraseWithIpa({
   durationSec = 0,
   energy,
   energyHopSec,
+  wordTimings,
 }: {
   text: string;
   language: string;
@@ -59,6 +109,11 @@ export function PhraseWithIpa({
   /** Envolvente del modelo: alinea las palabras con la voz, no con el reloj. */
   energy?: Float32Array | null;
   energyHopSec?: number;
+  /**
+   * Tiempos reales por palabra, si el motor de ASR los ha dado. Tienen
+   * prioridad sobre cualquier reparto: son medidos, no estimados (§6.4).
+   */
+  wordTimings?: { text: string; start: number; end: number }[] | null;
 }) {
   const words = React.useMemo(() => splitWords(text), [text]);
   const [entries, setEntries] = React.useState<WordIpa[] | null>(null);
@@ -107,10 +162,19 @@ export function PhraseWithIpa({
 
   const spans = React.useMemo<WordSpan[]>(() => {
     if (!karaoke || !words.length || durationSec <= 0) return [];
-    return energy && energy.length && energyHopSec
-      ? distributeWordsOverSpeech(words, durationSec, energy, energyHopSec)
-      : distributeWords(words, durationSec);
-  }, [karaoke, words, durationSec, energy, energyHopSec]);
+
+    // 1. Tiempos medidos por el ASR: lo mejor que se puede tener.
+    if (wordTimings && wordTimings.length) {
+      const aligned = alignTimings(words, wordTimings);
+      if (aligned) return aligned;
+    }
+    // 2. Reparto sobre los tramos con voz: alinea arranque y pausas.
+    if (energy && energy.length && energyHopSec) {
+      return distributeWordsOverSpeech(words, durationSec, energy, energyHopSec);
+    }
+    // 3. Reparto proporcional a secas (§6.4).
+    return distributeWords(words, durationSec);
+  }, [karaoke, words, durationSec, energy, energyHopSec, wordTimings]);
 
   React.useEffect(() => {
     if (open === null) return;

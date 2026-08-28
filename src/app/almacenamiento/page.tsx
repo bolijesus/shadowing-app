@@ -24,6 +24,7 @@ import {
 import { wipeAllData } from "@/lib/storage/wipe";
 import { clearTtsCache } from "@/lib/tts/cache";
 import { clearIpaCache } from "@/lib/ipa";
+import { deleteLocalModels } from "@/lib/asr/models";
 import { ensurePersistentStorage } from "@/lib/storage/persist";
 import { fmtBytes, fmtDate } from "@/lib/util";
 
@@ -246,6 +247,24 @@ export default function StoragePage() {
             }}
           >
             Vaciar caché de IPA
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: "Borrar modelos de IA",
+                  body: "Se borrarán los modelos de reconocimiento de voz descargados. Volverán a descargarse la próxima vez que transcribas algo.",
+                  confirmLabel: "Borrar",
+                  tone: "danger",
+                }))
+              )
+                return;
+              await deleteLocalModels();
+              await refresh();
+            }}
+          >
+            Borrar modelos de IA descargados
           </Button>
         </div>
         <Button

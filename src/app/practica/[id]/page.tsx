@@ -35,6 +35,12 @@ import {
   type Analysis,
 } from "@/lib/audio/analysis";
 import { scoreRound, contourForDisplay } from "@/lib/scoring/scoreRound";
+import {
+  transcribe,
+  selectedEngine,
+  engineDownloadMb,
+  type AsrResult,
+} from "@/lib/asr";
 import { buildAdvice } from "@/lib/scoring/advice";
 import { WaveformPanel } from "@/components/waveform/WaveformPanel";
 import { ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
@@ -144,6 +150,15 @@ export default function PracticePlayerPage() {
   const [showIntonation, setShowIntonation] = React.useState(true);
   const [showIpa, setShowIpa] = React.useState(false);
   const [scoring, setScoring] = React.useState(false);
+  const [asrState, setAsrState] = React.useState<
+    "idle" | "running" | "done" | "error"
+  >("idle");
+  const [asrProgress, setAsrProgress] = React.useState<number | null>(null);
+  const [asrText, setAsrText] = React.useState<string | null>(null);
+  const [asrError, setAsrError] = React.useState<string | null>(null);
+  const [asrWords, setAsrWords] = React.useState<
+    { text: string; start: number; end: number }[] | null
+  >(null);
   const [roundScore, setRoundScore] = React.useState<
     ReturnType<typeof scoreRound> | null
   >(null);
@@ -393,6 +408,10 @@ export default function PracticePlayerPage() {
     setRecPct(0);
     setYouAnalysis(null);
     setRoundScore(null);
+    setAsrState("idle");
+    setAsrText(null);
+    setAsrError(null);
+    setAsrWords(null);
   }, [round, loop, loopTimes, isTts]);
 
   /* --- análisis del modelo de la ronda (F0 + energía), cacheado --- */
@@ -562,14 +581,43 @@ export default function PracticePlayerPage() {
         useSettings.getState().micLatencyOffsetMs ?? defaultLatencyOffsetMs();
       const takeAnalysis = await analyzeTake(result.blob, latency);
       setYouAnalysis(takeAnalysis);
+
+      // Transcripción: es lo que activa el componente `words` de la nota
+      // (§6.6). Si falla o no hay motor, se sigue sin ella: mejor una nota
+      // renormalizada sobre lo medido que un número inventado (§13.9).
+      let asr: AsrResult | null = null;
+      if (!duelRef.current && round?.text.trim()) {
+        setAsrState("running");
+        try {
+          asr = await transcribe(result.blob, media?.language ?? "en-US", {
+            onProgress: (p) =>
+              setAsrProgress(
+                typeof p.progress === "number" ? Math.round(p.progress) : null,
+              ),
+          });
+          setAsrState(asr ? "done" : "idle");
+          setAsrText(asr?.text ?? null);
+        } catch (e) {
+          setAsrState("error");
+          setAsrError(
+            e instanceof Error ? e.message : "No se pudo transcribir.",
+          );
+        } finally {
+          setAsrProgress(null);
+        }
+      }
+      setAsrWords(asr?.words ?? null);
+
       const modelA = modelAnalysisRef.current;
-      if (modelA) {
+      if (modelA || asr) {
         const sc = scoreRound({
           model: modelA,
           take: takeAnalysis,
           weights: useSettings.getState().scoreWeights,
           // El Duelo de curvas puntúa solo la entonación (§7.E).
           only: duelRef.current ? ["intonation"] : undefined,
+          asrText: asr?.text,
+          referenceText: round?.text,
         });
         setRoundScore({ ...sc, tip: buildAdvice(sc) });
       }
@@ -824,6 +872,7 @@ export default function PracticePlayerPage() {
               durationSec={roundDurationSec}
               energy={modelAnalysis?.energy ?? null}
               energyHopSec={modelAnalysis?.energyHopSec}
+              wordTimings={asrWords}
             />
           </div>
         </div>
@@ -1034,7 +1083,25 @@ export default function PracticePlayerPage() {
 
               {scoring && (
                 <p className="text-sm font-semibold text-ink-soft">
-                  Analizando tu voz…
+                  {asrState === "running"
+                    ? asrProgress !== null
+                      ? `Descargando el modelo de voz… ${asrProgress}%`
+                      : "Transcribiendo lo que has dicho…"
+                    : "Analizando tu voz…"}
+                </p>
+              )}
+
+              {!scoring && asrState === "done" && asrText && (
+                <p className="rounded-lg bg-panel px-3 py-2 text-sm text-ink-soft">
+                  <span className="font-bold text-ink">Se te ha entendido:</span>{" "}
+                  «{asrText}»
+                </p>
+              )}
+
+              {!scoring && asrState === "error" && (
+                <p className="text-xs text-ink-soft">
+                  Sin transcripción ({asrError}). La nota se reparte entre lo
+                  que sí se ha podido medir; «Palabras» queda fuera.
                 </p>
               )}
               {/* Superpuestas: en paneles separados hay que compararlas de

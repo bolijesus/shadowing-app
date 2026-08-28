@@ -96,6 +96,7 @@ export default function PracticePlayerPage() {
   const usesHeadphones = useSettings((s) => s.usesHeadphones);
   const setSetting = useSettings((s) => s.set);
   const defaultRate = useSettings((s) => s.defaultRate);
+  const karaoke = useSettings((s) => s.karaoke);
   const rateRef = React.useRef(1);
 
   const [file, setFile] = React.useState<Blob | null>(null);
@@ -391,6 +392,12 @@ export default function PracticePlayerPage() {
   React.useEffect(() => {
     if (usesHeadphones === null) setShowHeadphones(true);
   }, [usesHeadphones]);
+
+  // Duración de la ronda: en TTS la del propio audio, si no la del rango.
+  const roundDurationSec =
+    modelAnalysis?.durationSec ??
+    (round ? round.endSec - round.startSec : 0);
+  const progressSec = modelPos * roundDurationSec;
 
   const modelContour = React.useMemo(
     () => (modelAnalysis ? contourForDisplay(modelAnalysis.semitones) : null),
@@ -709,6 +716,18 @@ export default function PracticePlayerPage() {
             </div>
             <div className="flex shrink-0 gap-2">
               <button
+                onClick={() => setSetting("karaoke", !karaoke)}
+                aria-pressed={karaoke}
+                title="Resalta el texto a medida que suena"
+                className={
+                  karaoke
+                    ? "rounded-lg border-2 border-ink bg-panel px-3 py-1.5 text-sm font-bold text-ink"
+                    : "rounded-lg border-2 border-line-strong bg-surface px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
+                }
+              >
+                Karaoke
+              </button>
+              <button
                 onClick={() => setShowIpa((v) => !v)}
                 aria-pressed={showIpa}
                 className="rounded-lg border-2 border-line-strong bg-surface px-3 py-1.5 text-sm font-bold text-ink hover:border-ink"
@@ -732,6 +751,11 @@ export default function PracticePlayerPage() {
               text={round?.text ?? ""}
               language={media?.language ?? "en-US"}
               showIpa={showIpa}
+              karaoke={karaoke}
+              progressSec={progressSec}
+              durationSec={roundDurationSec}
+              energy={modelAnalysis?.energy ?? null}
+              energyHopSec={modelAnalysis?.energyHopSec}
             />
           </div>
         </div>

@@ -9,6 +9,12 @@ import {
   ipaAvailable,
   type WordIpa,
 } from "@/lib/ipa";
+import {
+  distributeWords,
+  distributeWordsOverSpeech,
+  fillAt,
+  type WordSpan,
+} from "@/lib/text/wordTiming";
 
 /**
  * Frase objetivo con el IPA bajo cada palabra (§6.5, §12).
@@ -20,11 +26,23 @@ export function PhraseWithIpa({
   language,
   showIpa,
   className,
+  karaoke = false,
+  progressSec = 0,
+  durationSec = 0,
+  energy,
+  energyHopSec,
 }: {
   text: string;
   language: string;
   showIpa: boolean;
   className?: string;
+  /** Resaltado tipo karaoke siguiendo la reproducción. */
+  karaoke?: boolean;
+  progressSec?: number;
+  durationSec?: number;
+  /** Envolvente del modelo: alinea las palabras con la voz, no con el reloj. */
+  energy?: Float32Array | null;
+  energyHopSec?: number;
 }) {
   const words = React.useMemo(() => splitWords(text), [text]);
   const [entries, setEntries] = React.useState<WordIpa[] | null>(null);
@@ -52,6 +70,13 @@ export function PhraseWithIpa({
     };
   }, [showIpa, words, language, available]);
 
+  const spans = React.useMemo<WordSpan[]>(() => {
+    if (!karaoke || !words.length || durationSec <= 0) return [];
+    return energy && energy.length && energyHopSec
+      ? distributeWordsOverSpeech(words, durationSec, energy, energyHopSec)
+      : distributeWords(words, durationSec);
+  }, [karaoke, words, durationSec, energy, energyHopSec]);
+
   React.useEffect(() => {
     if (open === null) return;
     const close = () => setOpen(null);
@@ -72,6 +97,8 @@ export function PhraseWithIpa({
       <p className="flex flex-wrap items-end gap-x-2 gap-y-1 text-[22px] font-extrabold leading-snug text-ink">
         {words.map((w, i) => {
           const ipa = entries?.[i]?.ipa ?? "";
+          const span = spans[i];
+          const fill = karaoke && span ? fillAt(span, progressSec) : 0;
           return (
             <span key={`${w}-${i}`} className="relative inline-block">
               <button
@@ -82,12 +109,24 @@ export function PhraseWithIpa({
                   setOpen(open === i ? null : i);
                 }}
                 className={cn(
-                  "text-left",
-                  ipa && "cursor-help underline decoration-dotted decoration-line-strong underline-offset-4",
+                  "relative text-left",
+                  ipa &&
+                    "cursor-help underline decoration-dotted decoration-line-strong underline-offset-4",
+                  // En karaoke lo aún no dicho se atenúa; el resto va normal.
+                  karaoke && fill < 1 && "text-ink-soft",
                 )}
                 aria-label={ipa ? `${w}, se pronuncia ${ipa}` : w}
               >
                 {w}
+                {karaoke && fill > 0 && (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-y-0 left-0 overflow-hidden whitespace-pre text-brand-ink"
+                    style={{ width: `${fill * 100}%` }}
+                  >
+                    {w}
+                  </span>
+                )}
               </button>
 
               {showIpa && ipa && (

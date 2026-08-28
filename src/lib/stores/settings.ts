@@ -14,6 +14,7 @@ const DEFAULTS: SettingsState = {
   theme: "system",
   fontSize: 16,
   usesHeadphones: null,
+  karaoke: true,
   micLatencyOffsetMs: null,
   scoreWeights: {
     words: 0.3,

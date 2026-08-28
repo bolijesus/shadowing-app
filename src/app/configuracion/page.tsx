@@ -124,6 +124,20 @@ export default function SettingsPage() {
           />
         </Field>
         <Field
+          label="Karaoke"
+          hint="Resalta el texto palabra a palabra mientras suena el modelo."
+        >
+          <SelectField
+            aria-label="Karaoke"
+            value={s.karaoke ? "on" : "off"}
+            onValueChange={(v) => s.set("karaoke", v === "on")}
+            options={[
+              { value: "on", label: "Activado" },
+              { value: "off", label: "Desactivado" },
+            ]}
+          />
+        </Field>
+        <Field
           label="Auriculares"
           hint="Con auriculares se desactiva la cancelación de eco al grabar."
         >

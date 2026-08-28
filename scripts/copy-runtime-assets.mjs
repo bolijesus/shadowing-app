@@ -7,7 +7,13 @@
  *   con el CDN bloqueado— falla con "no available backend found", y entonces
  *   ni WebGPU ni WASM arrancan. La app debe funcionar sin conexión (§1.6).
  */
-import { mkdirSync, copyFileSync, existsSync, readdirSync } from "node:fs";
+import {
+  mkdirSync,
+  copyFileSync,
+  existsSync,
+  readdirSync,
+  realpathSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
@@ -29,17 +35,26 @@ function copyEspeak() {
 }
 
 function copyOnnx() {
-  // No se puede resolver por require: transformers.js lo trae como
-  // dependencia anidada. Se busca en el almacén de pnpm.
-  const roots = ["node_modules/onnxruntime-web/dist"];
+  // Se resuelve a través de transformers.js, no buscando en el almacén de
+  // pnpm: puede haber más de una versión instalada (por ejemplo la dev que
+  // fija transformers y la estable que impone el override) y copiar la que
+  // no toca daría binarios que no casan con el JS que los carga.
+  // pnpm deja el onnxruntime que le toca a transformers colgando de su
+  // propio node_modules. Se busca ahí, no por el almacén entero: puede haber
+  // varias versiones instaladas (la dev que fija transformers y la estable
+  // que impone el override) y copiar la que no toca daría binarios que no
+  // casan con el JS que los carga.
+  const roots = [];
   const store = "node_modules/.pnpm";
   if (existsSync(store)) {
     for (const d of readdirSync(store)) {
-      if (d.startsWith("onnxruntime-web@")) {
+      if (d.startsWith("@huggingface+transformers@")) {
         roots.push(join(store, d, "node_modules/onnxruntime-web/dist"));
       }
     }
   }
+  roots.push("node_modules/onnxruntime-web/dist");
+
   const dist = roots.find((r) => existsSync(r));
   if (!dist) {
     console.warn("onnxruntime-web no encontrado: Whisper local no funcionará.");
@@ -55,7 +70,15 @@ function copyOnnx() {
       n++;
     }
   }
-  console.log(`onnxruntime-web -> public/ort (${n} archivos)`);
+  // La versión real, siguiendo el enlace de pnpm.
+  let ver = "resuelto";
+  try {
+    ver =
+      realpathSync(dist).match(/onnxruntime-web@([^/]+)/)?.[1] ?? "resuelto";
+  } catch {
+    /* da igual: es solo para el mensaje */
+  }
+  console.log(`onnxruntime-web ${ver} -> public/ort (${n} archivos)`);
 }
 
 copyEspeak();

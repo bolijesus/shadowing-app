@@ -7,3 +7,12 @@ allowBuilds:
   protobufjs: false
   sharp: false
   unrs-resolver: false
+
+overrides:
+  # transformers 4.2.0 fija onnxruntime-web en una build de DESARROLLO
+  # (1.26.0-dev.20260416). Esa build revienta al crear la sesión de Whisper
+  # con "qdq_actions.cc TransposeDQWeightsForMatMulNBits / Missing required
+  # scale", y falla igual con cualquier cuantización y con el optimizador de
+  # grafos desactivado, así que no es del modelo ni de la configuración.
+  # Se fuerza la estable de la misma minor.
+  onnxruntime-web: 1.26.0

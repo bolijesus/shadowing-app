@@ -170,8 +170,9 @@ export async function mergeRoundWithNext(
   });
 
   for (const t of takes) if (t.audioRef) await deleteBlob(t.audioRef);
-  if (a.analysisRef) await deleteBlob(a.analysisRef);
-  if (b.analysisRef) await deleteBlob(b.analysisRef);
+  // El análisis cacheado no hace falta borrarlo: su clave en OPFS incluye el
+  // rango, así que al cambiar este ya no se encuentra y se recalcula solo.
+  // Los archivos que quedan sueltos los recoge el GC de arranque.
   return true;
 }
 
@@ -228,7 +229,7 @@ export async function splitRound(
   });
 
   for (const t of takes) if (t.audioRef) await deleteBlob(t.audioRef);
-  if (round.analysisRef) await deleteBlob(round.analysisRef);
+  // Igual que al unir: la caché del análisis se invalida sola por el rango.
   return true;
 }
 

@@ -39,8 +39,28 @@ export function deserializePeaks(buf: ArrayBuffer): Peaks {
   return { minmax, buckets, durationSec };
 }
 
-export function peaksPath(clipId: string): string {
-  return `analysis/peaks_${clipId}.bin`;
+/**
+ * La clave incluye el rango, no solo el id.
+ *
+ * Los rangos cambian: al unir o partir rondas, o si se rehace un recorte.
+ * Con la clave solo por id se devolvía el análisis del rango ANTERIOR, y
+ * entonces la onda y la curva dejaban de corresponder con lo que suena.
+ * Metiendo el rango en la clave, cualquier cambio falla la caché y se
+ * recalcula solo; los archivos huérfanos los recoge el GC de arranque.
+ */
+export function peaksPath(
+  clipId: string,
+  startSec = 0,
+  endSec = 0,
+): string {
+  return `analysis/peaks_${clipId}_${rangeTag(startSec, endSec)}.bin`;
+}
+
+/** Rango en milisegundos, para que la clave sea estable y comparable. */
+export function rangeTag(startSec: number, endSec: number): string {
+  const ms = (v: number) =>
+    Number.isFinite(v) ? Math.round(v * 1000) : "end";
+  return `${ms(startSec)}-${ms(endSec)}`;
 }
 
 /** Picos de un blob completo (p. ej. una toma), sin cachear. */
@@ -71,7 +91,7 @@ export interface BuildPeaksArgs {
 
 /** Devuelve picos desde OPFS si existen; si no, los calcula y cachea. */
 export async function getOrBuildPeaks(args: BuildPeaksArgs): Promise<Peaks> {
-  const path = peaksPath(args.clipId);
+  const path = peaksPath(args.clipId, args.startSec, args.endSec);
   if (await blobExists(path)) {
     try {
       return deserializePeaks(await readBlob(path));

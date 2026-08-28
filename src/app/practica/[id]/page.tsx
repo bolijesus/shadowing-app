@@ -437,9 +437,18 @@ export default function PracticePlayerPage() {
   const roundPeaks = React.useMemo<Peaks | null>(() => {
     if (isTts) return peaks;
     if (!peaks || !clip || !round) return peaks;
-    const clipDur = clip.endSec - clip.startSec || 1;
-    const a = Math.max(0, (round.startSec - clip.startSec) / clipDur);
-    const b = Math.min(1, (round.endSec - clip.startSec) / clipDur);
+    // Se usa la duración REAL de lo decodificado, no la del recorte: si el
+    // recorte pide más allá del final del audio, decodeRange recorta y los
+    // picos cubren menos. Mapear sobre la duración pedida desplazaría todo
+    // el trozo y la onda dejaría de corresponder con lo que se ve y se oye.
+    const spanSec =
+      peaks.durationSec > 0 ? peaks.durationSec : clip.endSec - clip.startSec;
+    if (spanSec <= 0) return peaks;
+
+    const a = Math.max(0, (round.startSec - clip.startSec) / spanSec);
+    const b = Math.min(1, (round.endSec - clip.startSec) / spanSec);
+    if (b <= a) return peaks;
+
     const from = Math.floor(a * peaks.buckets);
     const to = Math.max(from + 1, Math.ceil(b * peaks.buckets));
     return {

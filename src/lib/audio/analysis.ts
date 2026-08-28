@@ -5,6 +5,7 @@ import type { Analysis, AudioDspApi, Peaks } from "@/workers/audio-dsp.worker";
 import { blobExists, readBlob } from "@/lib/storage/opfs";
 import { putBlob } from "@/lib/storage/blobStore";
 import { decodeRange } from "./decode";
+import { rangeTag } from "./peaks";
 
 let _dsp: Comlink.Remote<AudioDspApi> | null = null;
 
@@ -159,8 +160,20 @@ export function deserializeAnalysis(buf: ArrayBuffer): Analysis {
   };
 }
 
-export function analysisPath(kind: "round" | "take", id: string): string {
-  return `analysis/${kind}_${id}.bin`;
+/**
+ * Igual que con los picos: la clave lleva el rango. Un análisis cacheado por
+ * id a secas sobrevivía a unir/partir rondas y devolvía la curva del rango
+ * viejo, que es justo lo que descuadraba la entonación respecto al audio.
+ */
+export function analysisPath(
+  kind: "round" | "take",
+  id: string,
+  startSec?: number,
+  endSec?: number,
+): string {
+  const tag =
+    startSec === undefined ? "" : `_${rangeTag(startSec, endSec ?? 0)}`;
+  return `analysis/${kind}_${id}${tag}.bin`;
 }
 
 /** Análisis del modelo por ronda, cacheado en OPFS. */
@@ -170,7 +183,7 @@ export async function getOrBuildRoundAnalysis(
   startSec: number,
   endSec: number,
 ): Promise<Analysis> {
-  const path = analysisPath("round", roundId);
+  const path = analysisPath("round", roundId, startSec, endSec);
   if (await blobExists(path)) {
     try {
       return deserializeAnalysis(await readBlob(path));

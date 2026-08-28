@@ -17,6 +17,8 @@ export function WaveformPanel({
   height = 120,
   showIntonation,
   onToggleIntonation,
+  onSeek,
+  durationSec,
 }: {
   label: string;
   peaks: Peaks | null;
@@ -26,6 +28,9 @@ export function WaveformPanel({
   height?: number;
   showIntonation?: boolean;
   onToggleIntonation?: () => void;
+  /** Pinchar en la onda reproduce desde ese punto. */
+  onSeek?: (ratio: number) => void;
+  durationSec?: number;
 }) {
   const canToggle = !!onToggleIntonation && !!contour;
   return (
@@ -51,6 +56,8 @@ export function WaveformPanel({
         tone={tone}
         height={height}
         f0={showIntonation ? (contour ?? null) : null}
+        onSeek={onSeek}
+        durationSec={durationSec}
       />
     </div>
   );

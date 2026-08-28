@@ -102,6 +102,28 @@ export class RangePlayer {
     this.el.pause();
   }
 
+  /**
+   * Salta a una fracción del rango (0–1) y reproduce desde ahí. Sirve para
+   * repetir una palabra concreta pinchando en la onda.
+   */
+  async seekRatio(ratio: number, play = true): Promise<void> {
+    const span = this.limit - this.start;
+    if (!isFinite(span) || span <= 0) return;
+    const t = this.start + Math.max(0, Math.min(1, ratio)) * span;
+    try {
+      this.el.currentTime = t;
+    } catch {
+      return; // metadata aún no lista
+    }
+    if (play && this.el.paused) {
+      try {
+        await this.el.play();
+      } catch (e) {
+        if ((e as DOMException)?.name !== "AbortError") throw e;
+      }
+    }
+  }
+
   toggle() {
     if (this.el.paused) void this.play();
     else this.pause();

@@ -26,6 +26,23 @@ interface Pipe {
   }>;
 }
 
+/**
+ * ¿Hay WebGPU de verdad? Comprobar `navigator.gpu` no basta: el API puede
+ * existir y `requestAdapter()` devolver null en máquinas sin GPU compatible,
+ * con el driver en lista negra o en una máquina virtual.
+ */
+async function webGpuUsable(): Promise<boolean> {
+  const gpu = (navigator as Navigator & {
+    gpu?: { requestAdapter(): Promise<unknown> };
+  }).gpu;
+  if (!gpu) return false;
+  try {
+    return !!(await gpu.requestAdapter());
+  } catch {
+    return false;
+  }
+}
+
 let pipe: Pipe | null = null;
 let loadedModel = "";
 let loadedDevice: "webgpu" | "wasm" = "wasm";
@@ -39,13 +56,14 @@ async function ensurePipeline(
   const tf = await import("@huggingface/transformers");
   const { pipeline, env } = tf;
 
-  // Un solo hilo: ver arriba por qué no se usa el multihilo.
-  if (env.backends?.onnx?.wasm) env.backends.onnx.wasm.numThreads = 1;
-
-  const hasWebGpu =
-    typeof navigator !== "undefined" &&
-    !!(navigator as Navigator & { gpu?: unknown }).gpu;
-  loadedDevice = hasWebGpu ? "webgpu" : "wasm";
+  if (env.backends?.onnx?.wasm) {
+    // Un solo hilo: ver arriba por qué no se usa el multihilo.
+    env.backends.onnx.wasm.numThreads = 1;
+    // Auto-hospedados en /public/ort. Sin esto onnxruntime los busca en un
+    // CDN y, si no hay red o está bloqueado, falla con "no available backend
+    // found" y se queda sin WebGPU Y sin WASM. La app debe ir offline (§1.6).
+    env.backends.onnx.wasm.wasmPaths = `${self.location.origin}/ort/`;
+  }
 
   const build = async (device: "webgpu" | "wasm") =>
     (await pipeline("automatic-speech-recognition", model, {
@@ -54,11 +72,23 @@ async function ensurePipeline(
       progress_callback: onProgress as never,
     })) as unknown as Pipe;
 
+  // No basta con que exista navigator.gpu: puede estar el API y no haber
+  // adaptador (GPU sin soporte, driver bloqueado, máquina virtual). Hay que
+  // pedirlo de verdad, o se elige WebGPU y luego revienta.
+  loadedDevice = (await webGpuUsable()) ? "webgpu" : "wasm";
+
   try {
     pipe = await build(loadedDevice);
-  } catch {
-    // Algunas GPU fallan al compilar los shaders: se cae a WASM en vez de
-    // dejar al usuario sin transcripción.
+  } catch (e) {
+    if (loadedDevice === "wasm") {
+      throw new Error(
+        `No se pudo iniciar el motor de voz: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+    // La GPU falló al compilar los shaders: se cae a CPU en vez de dejarte
+    // sin transcripción.
     loadedDevice = "wasm";
     pipe = await build("wasm");
   }

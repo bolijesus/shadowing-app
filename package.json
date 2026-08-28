@@ -7,8 +7,8 @@
     "build": "SERWIST_SUPPRESS_TURBOPACK_WARNING=1 next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "postinstall": "node scripts/copy-espeak.mjs",
-    "prebuild": "node scripts/copy-espeak.mjs"
+    "postinstall": "node scripts/copy-runtime-assets.mjs",
+    "prebuild": "node scripts/copy-runtime-assets.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

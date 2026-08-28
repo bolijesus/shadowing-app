@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { cn } from "@/lib/utils";
+import { fmtClock } from "@/lib/util";
 import type { Peaks } from "@/workers/audio-dsp.worker";
 
 type Tone = "reference" | "playing" | "recording";
@@ -18,6 +20,7 @@ export function Waveform({
   label,
   f0 = null,
   onSeek,
+  durationSec,
 }: {
   peaks: Peaks | null;
   progress?: number;
@@ -26,11 +29,19 @@ export function Waveform({
   label?: string;
   /** Contorno de entonación normalizado a [-1, 1]; NaN = tramo sordo. */
   f0?: Float32Array | null;
+  /**
+   * Pinchar en la onda salta a ese punto y reproduce desde ahí. Sirve para
+   * repetir una palabra concreta que no has entendido.
+   */
   onSeek?: (ratio: number) => void;
+  /** Duración del tramo, para rotular la posición del cursor en mm:ss. */
+  durationSec?: number;
 }) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const boxRef = React.useRef<HTMLDivElement>(null);
   const [width, setWidth] = React.useState(600);
+  /** Posición del ratón sobre la onda, 0–1. */
+  const [hover, setHover] = React.useState<number | null>(null);
 
   React.useEffect(() => {
     if (!boxRef.current) return;
@@ -160,6 +171,21 @@ export function Waveform({
       }
     }
 
+    // Cursor del ratón: dónde caería la reproducción si pinchas.
+    if (onSeek && hover !== null) {
+      const hx = hover * width;
+      ctx.strokeStyle = ink;
+      ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(hx, 0);
+      ctx.lineTo(hx, height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
     // Cursor de progreso.
     if (progress > 0.001 && progress < 0.999) {
       ctx.strokeStyle = accent;
@@ -169,22 +195,42 @@ export function Waveform({
       ctx.lineTo(progX, height);
       ctx.stroke();
     }
-  }, [peaks, progress, tone, width, height, f0]);
+  }, [peaks, progress, tone, width, height, f0, hover, onSeek]);
 
   return (
     <div ref={boxRef} className="relative w-full">
       <canvas
         ref={canvasRef}
-        role={onSeek ? "slider" : "img"}
+        role="img"
         aria-label={label ? `Onda ${label}` : "Forma de onda"}
         style={{ width: "100%", height }}
-        className="rounded-lg bg-panel"
+        className={cn("rounded-lg bg-panel", onSeek && "cursor-pointer")}
+        onPointerMove={(e) => {
+          if (!onSeek) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          setHover(
+            Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+          );
+        }}
+        onPointerLeave={() => setHover(null)}
         onClick={(e) => {
           if (!onSeek) return;
           const rect = e.currentTarget.getBoundingClientRect();
-          onSeek((e.clientX - rect.left) / rect.width);
+          onSeek(
+            Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+          );
         }}
       />
+
+      {/* Hora bajo el cursor: saber a qué segundo vas a saltar. */}
+      {onSeek && hover !== null && durationSec ? (
+        <span
+          className="pointer-events-none absolute -top-1 z-10 -translate-x-1/2 rounded bg-ink px-1.5 py-0.5 font-mono text-[10px] font-bold text-white"
+          style={{ left: `${hover * 100}%` }}
+        >
+          {fmtClock(hover * durationSec)}
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -452,6 +452,11 @@ function RoundDetail({
             height={110}
             showIntonation={showIntonation}
             onToggleIntonation={onToggleIntonation}
+            durationSec={round.endSec - round.startSec}
+            onSeek={(r) => {
+              ensureAudioContext();
+              void playerRef.current?.seekRatio(r);
+            }}
           />
         )}
       </div>

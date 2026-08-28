@@ -911,6 +911,17 @@ export default function PracticePlayerPage() {
             peaks={roundPeaks}
             contour={modelContour}
             progress={modelPos}
+            durationSec={roundDurationSec}
+            onSeek={(r) => {
+              // Pinchar en la onda reproduce desde ese punto: útil para
+              // repetir una palabra suelta que no se ha entendido.
+              if (isYouTube) {
+                ytRef.current?.play(false);
+                return;
+              }
+              ensureAudioContext();
+              void playerRef.current?.seekRatio(r);
+            }}
             tone={
               phase === "recording"
                 ? "recording"

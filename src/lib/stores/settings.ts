@@ -16,8 +16,8 @@ const DEFAULTS: SettingsState = {
   usesHeadphones: null,
   karaoke: true,
   micLatencyOffsetMs: null,
+  phraseTailMs: 0,
   scoreWeights: {
-    words: 0.3,
     intonation: 0.25,
     timing: 0.2,
     rhythmShape: 0.15,

@@ -30,6 +30,7 @@ import { mediaFileCache } from "@/lib/media/fileCache";
 import {
   ensureClipLoaded,
   roundAnalysis,
+  refineRoundBounds,
   releaseClip,
 } from "@/lib/audio/clipAnalysis";
 import {
@@ -105,6 +106,7 @@ export default function PracticePlayerPage() {
   const setSetting = useSettings((s) => s.set);
   const defaultRate = useSettings((s) => s.defaultRate);
   const karaoke = useSettings((s) => s.karaoke);
+  const phraseTailMs = useSettings((s) => s.phraseTailMs);
   const rateRef = React.useRef(1);
 
   const [file, setFile] = React.useState<Blob | null>(null);
@@ -387,6 +389,46 @@ export default function PracticePlayerPage() {
     };
   }, [file, clip, isTts, round, peaksAttempt]);
 
+  /**
+   * Cortes afinados contra el audio.
+   *
+   * Los tiempos del .srt marcan cuándo entra y sale la línea en pantalla, no
+   * cuándo empieza y acaba de sonar: el cue se cierra a menudo encima de la
+   * última palabra. Se estiran hasta el primer silencio, y si no lo hay
+   * —porque el siguiente hablante entra pisando— se queda un margen corto.
+   */
+  const [bounds, setBounds] = React.useState<{
+    startSec: number;
+    endSec: number;
+  } | null>(null);
+
+  React.useEffect(() => {
+    setBounds(null);
+    if (!round || !clip || !clipReady || isTts || isYouTube || !file) return;
+    let cancelled = false;
+    void refineRoundBounds(
+      file,
+      clip.id,
+      clip.startSec,
+      clip.endSec,
+      round.startSec,
+      round.endSec,
+      { extraEndSec: phraseTailMs / 1000 },
+    )
+      .then((b) => {
+        if (!cancelled) setBounds(b);
+      })
+      .catch(() => {
+        /* sin afinar: se usan los tiempos del subtítulo */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [round, clip, clipReady, isTts, isYouTube, phraseTailMs, file]);
+
+  const playStart = bounds?.startSec ?? round?.startSec ?? 0;
+  const playEnd = bounds?.endSec ?? round?.endSec ?? 0;
+
   /* --- rango del RangePlayer para la ronda actual --- */
   React.useEffect(() => {
     loopRef.current = loop;
@@ -395,12 +437,12 @@ export default function PracticePlayerPage() {
     if (!round) return;
     desiredRangeRef.current = isTts
       ? [0, Number.MAX_SAFE_INTEGER]
-      : [round.startSec, round.endSec];
+      : [playStart, playEnd];
     if (!playerRef.current) return;
     // En TTS cada ronda es su propio archivo: el rango es todo el blob.
     const range: [number, number] = isTts
       ? [0, Number.MAX_SAFE_INTEGER]
-      : [round.startSec, round.endSec];
+      : [playStart, playEnd];
     desiredRangeRef.current = range;
     playerRef.current.setRange(range[0], range[1]);
     playerRef.current.setLoop(loop, loopTimes);
@@ -409,6 +451,17 @@ export default function PracticePlayerPage() {
     setYouAnalysis(null);
     setRoundScore(null);
   }, [round, loop, loopTimes, isTts]);
+
+  /**
+   * Los cortes afinados llegan después de decodificar, así que se re-aplican
+   * aparte: si esto fuera al efecto de arriba, cada afinado reiniciaría la
+   * fase y te sacaría de la grabación.
+   */
+  React.useEffect(() => {
+    if (isTts || !round || !playerRef.current) return;
+    desiredRangeRef.current = [playStart, playEnd];
+    playerRef.current.setRange(playStart, playEnd);
+  }, [playStart, playEnd, isTts, round]);
 
   /* --- análisis del modelo de la ronda (F0 + energía), cacheado --- */
   React.useEffect(() => {
@@ -424,8 +477,8 @@ export default function PracticePlayerPage() {
           isTts ? 0 : clip!.startSec,
           isTts ? Number.MAX_SAFE_INTEGER : clip!.endSec,
           round.id,
-          isTts ? 0 : round.startSec,
-          isTts ? Number.MAX_SAFE_INTEGER : round.endSec,
+          isTts ? 0 : playStart,
+          isTts ? Number.MAX_SAFE_INTEGER : playEnd,
         );
         if (!cancelled) {
           setModelAnalysis(a);
@@ -441,7 +494,7 @@ export default function PracticePlayerPage() {
     return () => {
       cancelled = true;
     };
-  }, [file, round, isTts, clip]);
+  }, [file, round, isTts, clip, playStart, playEnd]);
 
   // Al salir de la práctica se suelta el PCM que el worker tiene en memoria.
   React.useEffect(() => () => releaseClip(), []);
@@ -453,8 +506,7 @@ export default function PracticePlayerPage() {
 
   // Duración de la ronda: en TTS la del propio audio, si no la del rango.
   const roundDurationSec =
-    modelAnalysis?.durationSec ??
-    (round ? round.endSec - round.startSec : 0);
+    modelAnalysis?.durationSec ?? (round ? playEnd - playStart : 0);
   const progressSec = modelPos * roundDurationSec;
 
   const modelContour = React.useMemo(
@@ -529,7 +581,7 @@ export default function PracticePlayerPage() {
     }
     setPhase("recording");
     setRecPct(0);
-    const targetMs = Math.max(1200, (round.endSec - round.startSec) * 1000);
+    const targetMs = Math.max(1200, (playEnd - playStart) * 1000);
     const startedAt = performance.now();
     const iv = setInterval(() => {
       const p = (performance.now() - startedAt) / targetMs;
@@ -1100,7 +1152,7 @@ export default function PracticePlayerPage() {
               ← Ronda anterior
             </button>
             <span>
-              {round ? `${fmtClock(round.startSec)}–${fmtClock(round.endSec)}` : ""}
+              {round ? `${fmtClock(playStart)}–${fmtClock(playEnd)}` : ""}
             </span>
             <button
               onClick={() => setIdx((i) => Math.min(total - 1, i + 1))}

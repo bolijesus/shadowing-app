@@ -1,7 +1,16 @@
 /// <reference lib="webworker" />
 import * as Comlink from "comlink";
 import { computeF0 } from "@/lib/dsp/f0";
-import { computeEnergy, detectPauses } from "@/lib/dsp/energy";
+import {
+  computeEnergy,
+  detectPauses,
+  type EnergyEnvelope,
+} from "@/lib/dsp/energy";
+import {
+  refineBounds,
+  type RefineOptions,
+  type RefinedBounds,
+} from "@/lib/dsp/bounds";
 
 /**
  * PCM decodificado del recorte en curso.
@@ -12,8 +21,13 @@ import { computeEnergy, detectPauses } from "@/lib/dsp/energy";
  * decodifica una vez aquí, se guarda el trozo del recorte —que son unos pocos
  * MB— y cada ronda sale de ese buffer.
  */
-let cached: { token: string; pcm: Float32Array; sampleRate: number } | null =
-  null;
+let cached: {
+  token: string;
+  pcm: Float32Array;
+  sampleRate: number;
+  /** Envolvente del recorte entero, a demanda: sirve para afinar cortes. */
+  env?: EnergyEnvelope;
+} | null = null;
 
 /**
  * Pool DSP: picos de onda, F0 y envolvente de energía.
@@ -95,6 +109,28 @@ const api = {
   ): { durationSec: number; sampleRate: number } {
     cached = { token, pcm, sampleRate };
     return { durationSec: pcm.length / sampleRate, sampleRate };
+  },
+
+  /**
+   * Estira los bordes de una ronda hasta donde de verdad calla la voz.
+   * La lógica vive en `lib/dsp/bounds`; aquí solo se pone la envolvente del
+   * recorte, que se calcula una vez y se reaprovecha para todas las rondas.
+   */
+  refineBounds(
+    token: string,
+    fromSec: number,
+    toSec: number,
+    opts: RefineOptions = {},
+  ): RefinedBounds | null {
+    if (cached?.token !== token) return null;
+    if (!cached.env) cached.env = computeEnergy(cached.pcm, cached.sampleRate);
+    return refineBounds(
+      cached.env,
+      fromSec,
+      toSec,
+      cached.pcm.length / cached.sampleRate,
+      opts,
+    );
   },
 
   /** ¿Está ya decodificado este recorte? */
@@ -190,5 +226,6 @@ const api = {
   },
 };
 
+export type { RefinedBounds, RefineOptions };
 export type AudioDspApi = typeof api;
 Comlink.expose(api);

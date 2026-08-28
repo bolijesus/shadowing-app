@@ -85,6 +85,22 @@ export default function SettingsPage() {
             onChange={(e) => s.set("passThreshold", Number(e.target.value))}
           />
         </Field>
+        <Field
+          label="Margen al final de la frase"
+          hint="Los cortes ya se estiran solos hasta donde calla la voz. Sube esto solo si el siguiente personaje entra pisando y aun así te falta el final."
+        >
+          <SelectField
+            aria-label="Margen al final de la frase"
+            value={String(s.phraseTailMs)}
+            onValueChange={(v) => s.set("phraseTailMs", Number(v))}
+            options={[
+              { value: "0", label: "Automático" },
+              { value: "150", label: "+150 ms" },
+              { value: "300", label: "+300 ms" },
+              { value: "500", label: "+500 ms" },
+            ]}
+          />
+        </Field>
         <Field label="Escalera de texto por defecto">
           <SelectField
             aria-label="Escalera de texto"

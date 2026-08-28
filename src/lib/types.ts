@@ -220,8 +220,13 @@ export interface SettingsState {
   /** Resaltado tipo karaoke del texto mientras suena el modelo. */
   karaoke: boolean;
   micLatencyOffsetMs: number | null;
+  /**
+   * Margen extra al final de cada frase, en ms. Los cortes ya se afinan solos
+   * contra el audio; esto es para cuando el siguiente hablante entra pisando
+   * y no hay silencio al que estirarse.
+   */
+  phraseTailMs: number;
   scoreWeights: {
-    words: number;
     intonation: number;
     timing: number;
     rhythmShape: number;

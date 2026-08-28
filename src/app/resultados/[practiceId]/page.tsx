@@ -15,7 +15,12 @@ import { ContourCompare } from "@/components/waveform/ContourCompare";
 import { BigScore, ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
 import { readAsObjectURL } from "@/lib/storage/opfs";
 import { loadAnalysis, type Analysis } from "@/lib/audio/analysis";
-import { roundAnalysis, releaseClip } from "@/lib/audio/clipAnalysis";
+import {
+  roundAnalysis,
+  refineRoundBounds,
+  releaseClip,
+} from "@/lib/audio/clipAnalysis";
+import { useSettings } from "@/lib/stores/settings";
 import { contourForDisplay, type RoundScore } from "@/lib/scoring/scoreRound";
 import { resolveMediaSource } from "@/lib/media/source";
 import { mediaFileCache } from "@/lib/media/fileCache";
@@ -313,6 +318,16 @@ function RoundDetail({
   onToggleIntonation: () => void;
 }) {
   const [modelA, setModelA] = React.useState<Analysis | null>(null);
+  /**
+   * Los mismos cortes afinados que usa la práctica. Si aquí se usaran los del
+   * subtítulo, el modelo sonaría distinto al que imitaste y la nota estaría
+   * calculada sobre un tramo que ya no se puede volver a escuchar.
+   */
+  const [bounds, setBounds] = React.useState<{
+    startSec: number;
+    endSec: number;
+  } | null>(null);
+  const phraseTailMs = useSettings((s) => s.phraseTailMs);
   const [takeA, setTakeA] = React.useState<Analysis | null>(null);
   const [url, setUrl] = React.useState<string | null>(null);
   const modelElRef = React.useRef<HTMLAudioElement | null>(null);
@@ -322,21 +337,42 @@ function RoundDetail({
   React.useEffect(() => {
     if (!file) return;
     let cancelled = false;
-    roundAnalysis(
+    setBounds(null);
+    void refineRoundBounds(
       file,
       clipId,
       clipStart,
       clipEnd,
-      round.id,
       round.startSec,
       round.endSec,
-    )
+      { extraEndSec: phraseTailMs / 1000 },
+    ).then((b) => !cancelled && setBounds(b));
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    file,
+    clipId,
+    clipStart,
+    clipEnd,
+    round.startSec,
+    round.endSec,
+    phraseTailMs,
+  ]);
+
+  const playStart = bounds?.startSec ?? round.startSec;
+  const playEnd = bounds?.endSec ?? round.endSec;
+
+  React.useEffect(() => {
+    if (!file) return;
+    let cancelled = false;
+    roundAnalysis(file, clipId, clipStart, clipEnd, round.id, playStart, playEnd)
       .then((a) => !cancelled && setModelA(a))
       .catch(() => !cancelled && setModelA(null));
     return () => {
       cancelled = true;
     };
-  }, [file, clipId, clipStart, clipEnd, round.id, round.startSec, round.endSec]);
+  }, [file, clipId, clipStart, clipEnd, round.id, playStart, playEnd]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -378,7 +414,7 @@ function RoundDetail({
     el.preload = "metadata";
     modelElRef.current = el;
     const rp = new RangePlayer(el);
-    rp.setRange(round.startSec, round.endSec);
+    rp.setRange(playStart, playEnd);
     playerRef.current = rp;
     let raf = 0;
     const tick = () => {
@@ -392,7 +428,7 @@ function RoundDetail({
       URL.revokeObjectURL(objUrl);
       playerRef.current = null;
     };
-  }, [file, round.startSec, round.endSec]);
+  }, [file, playStart, playEnd]);
 
   const modelContour = React.useMemo(
     () => (modelA ? contourForDisplay(modelA.semitones) : null),
@@ -452,7 +488,7 @@ function RoundDetail({
             height={110}
             showIntonation={showIntonation}
             onToggleIntonation={onToggleIntonation}
-            durationSec={round.endSec - round.startSec}
+            durationSec={playEnd - playStart}
             onSeek={(r) => {
               ensureAudioContext();
               void playerRef.current?.seekRatio(r);
@@ -493,7 +529,7 @@ function RoundDetail({
       ) : (
         <p className="text-sm text-ink-soft">
           Sin toma guardada en esta ronda ·{" "}
-          {fmtClock(round.startSec)}–{fmtClock(round.endSec)}
+          {fmtClock(playStart)}–{fmtClock(playEnd)}
         </p>
       )}
 

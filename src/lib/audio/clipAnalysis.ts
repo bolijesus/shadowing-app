@@ -11,6 +11,7 @@ import {
   type Analysis,
 } from "./analysis";
 import { decodeRange, FileTooLargeToDecode, MAX_DECODE_BYTES } from "./decode";
+import type { RefineOptions } from "@/lib/dsp/bounds";
 import { captureRangeAudio, type CaptureProgress } from "./captureFallback";
 
 /**
@@ -111,6 +112,52 @@ export async function ensureClipLoaded(
     return await loading;
   } finally {
     loading = null;
+  }
+}
+
+/**
+ * Afina los cortes de una ronda contra el audio ya decodificado.
+ *
+ * Los tiempos de un .srt marcan cuándo entra y sale la línea en pantalla, no
+ * cuándo empieza y acaba de sonar, así que el cue suele cerrarse encima de la
+ * última palabra. Devuelve tiempos ABSOLUTOS del medio, como los de la ronda.
+ *
+ * Si el audio no se puede leer, devuelve `null` y quien llama se queda con
+ * los tiempos del subtítulo: esto no debe impedir practicar.
+ *
+ * Todas las pantallas tienen que pedir los mismos cortes. Si la práctica
+ * afinara y los resultados no, el modelo sonaría distinto en cada sitio y la
+ * nota se habría calculado sobre un tramo que ya no se puede volver a oír.
+ */
+export async function refineRoundBounds(
+  file: Blob,
+  clipId: string,
+  clipStartSec: number,
+  clipEndSec: number,
+  roundStartSec: number,
+  roundEndSec: number,
+  opts: RefineOptions = {},
+): Promise<{ startSec: number; endSec: number } | null> {
+  try {
+    const token = await ensureClipLoaded(
+      file,
+      clipId,
+      clipStartSec,
+      clipEndSec,
+    );
+    const r = await dsp().refineBounds(
+      token,
+      Math.max(0, roundStartSec - clipStartSec),
+      Math.max(0, roundEndSec - clipStartSec),
+      opts,
+    );
+    if (!r) return null;
+    return {
+      startSec: clipStartSec + r.startSec,
+      endSec: clipStartSec + r.endSec,
+    };
+  } catch {
+    return null;
   }
 }
 

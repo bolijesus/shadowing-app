@@ -82,6 +82,8 @@ export default function NuevaPracticaPage() {
 
   const previewRef = React.useRef<HTMLMediaElement | null>(null);
   const previewUrlRef = React.useRef<string | null>(null);
+  const [previewPlaying, setPreviewPlaying] = React.useState(false);
+  const [previewTime, setPreviewTime] = React.useState(0);
 
   /** Conecta la previsualización al archivo la primera vez que se usa. */
   const ensurePreview = React.useCallback((): HTMLMediaElement | null => {
@@ -93,6 +95,57 @@ export default function NuevaPracticaPage() {
     }
     return el;
   }, [file]);
+
+  /* Estado de la previsualización, para poder pausar y parar de verdad. */
+  React.useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    const onPlay = () => setPreviewPlaying(true);
+    const onPause = () => setPreviewPlaying(false);
+    const onTime = () => setPreviewTime(el.currentTime);
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("ended", onPause);
+    el.addEventListener("timeupdate", onTime);
+    return () => {
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("ended", onPause);
+      el.removeEventListener("timeupdate", onTime);
+    };
+  }, [step, hasVideo]);
+
+  const togglePreview = React.useCallback(() => {
+    const el = ensurePreview();
+    if (!el) return;
+    if (!el.paused) {
+      el.pause();
+      return;
+    }
+    // Fuera del rango, se vuelve al inicio del recorte.
+    if (el.currentTime < range.start || el.currentTime >= range.end) {
+      el.currentTime = range.start;
+    }
+    void el.play().catch(() => {});
+    const stop = () => {
+      if (el.currentTime >= range.end) {
+        el.pause();
+        el.removeEventListener("timeupdate", stop);
+      }
+    };
+    el.addEventListener("timeupdate", stop);
+  }, [ensurePreview, range.start, range.end]);
+
+  const stopPreview = React.useCallback(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    el.pause();
+    try {
+      el.currentTime = range.start;
+    } catch {
+      /* metadata aún no lista */
+    }
+  }, [range.start]);
 
   // Un archivo nuevo invalida la URL anterior.
   React.useEffect(() => {
@@ -516,34 +569,36 @@ export default function NuevaPracticaPage() {
             <audio ref={previewRef as React.RefObject<HTMLAudioElement>} hidden />
           )}
 
+          {/* Transporte propio: reproducir el rango, pausar y volver al
+              inicio. Antes solo se podía arrancar y no había forma de parar. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={togglePreview} disabled={!file}>
+              {previewPlaying ? "❚❚ Pausar" : "▶ Reproducir rango"}
+            </Button>
+            <Button variant="outline" onClick={stopPreview} disabled={!file}>
+              ■ Volver al inicio
+            </Button>
+            <span className="font-mono text-sm text-ink-soft tabular-nums">
+              {fmtClock(previewTime)} / {fmtClock(duration || range.end)}
+            </span>
+          </div>
+
           <RangeSelector
             duration={duration || range.end}
             start={range.start}
             end={range.end}
             onChange={(s, e) => setRange({ start: s, end: e })}
             onScrub={(sec) => {
-              // Lleva la imagen al punto que estás moviendo.
-              const el = ensurePreview();
-              if (el) {
-                try {
-                  el.currentTime = sec;
-                } catch {
-                  /* metadata aún no lista */
-                }
-              }
-            }}
-            onPreview={async () => {
+              // Al mover un tirador, la imagen salta a ese punto. Si estaba
+              // sonando se pausa: si no, se pelearían por el currentTime.
               const el = ensurePreview();
               if (!el) return;
-              el.currentTime = range.start;
-              await el.play().catch(() => {});
-              const stop = () => {
-                if (el.currentTime >= range.end) {
-                  el.pause();
-                  el.removeEventListener("timeupdate", stop);
-                }
-              };
-              el.addEventListener("timeupdate", stop);
+              if (!el.paused) el.pause();
+              try {
+                el.currentTime = sec;
+              } catch {
+                /* metadata aún no lista */
+              }
             }}
           />
 

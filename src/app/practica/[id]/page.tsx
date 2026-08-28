@@ -115,6 +115,8 @@ export default function PracticePlayerPage() {
   >(null);
   const [peaks, setPeaks] = React.useState<Peaks | null>(null);
   const [peaksNote, setPeaksNote] = React.useState<string | null>(null);
+  const [peaksBusy, setPeaksBusy] = React.useState(false);
+  const [peaksAttempt, setPeaksAttempt] = React.useState(0);
 
   const [idx, setIdx] = React.useState(0);
   const [phase, setPhase] = React.useState<Phase>("listen");
@@ -323,11 +325,10 @@ export default function PracticePlayerPage() {
     if (!file || !clip) return;
     let cancelled = false;
     setPeaks(null);
-    // Con un archivo largo la primera onda tarda: hay que leerlo y
-    // decodificarlo entero. Se avisa en vez de dejar el panel vacío.
+    setPeaksBusy(true);
     setPeaksNote(
       file.size > SLOW_DECODE_BYTES
-        ? "Archivo grande: la primera onda tarda un poco. Después queda guardada."
+        ? "Archivo grande: la primera onda puede tardar un minuto. Después queda guardada."
         : null,
     );
     (async () => {
@@ -344,18 +345,23 @@ export default function PracticePlayerPage() {
         }
       } catch (e) {
         if (!cancelled) {
+          // Se muestra el error real: si un contenedor trae un códec de audio
+          // que Web Audio no sabe decodificar, hay que poder saberlo.
+          const detail = e instanceof Error ? e.message : String(e);
           setPeaksNote(
             e instanceof FileTooLargeToDecode
               ? "Archivo demasiado grande para analizarlo en el navegador."
-              : "No se pudo generar la forma de onda. La reproducción sigue funcionando.",
+              : `No se pudo generar la onda (${detail}). La reproducción y la grabación siguen funcionando.`,
           );
         }
+      } finally {
+        if (!cancelled) setPeaksBusy(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [file, clip, isTts, round]);
+  }, [file, clip, isTts, round, peaksAttempt]);
 
   /* --- rango del RangePlayer para la ronda actual --- */
   React.useEffect(() => {
@@ -844,7 +850,25 @@ export default function PracticePlayerPage() {
               showIntonation={showIntonation}
             />
           )}
-          {peaksNote && <p className="text-xs text-ink-soft">{peaksNote}</p>}
+          {peaksBusy && (
+            <p className="text-xs font-semibold text-ink-soft">
+              Generando la forma de onda…
+            </p>
+          )}
+          {peaksNote && (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs text-ink-soft">{peaksNote}</p>
+              {!peaksBusy && !peaks && (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setPeaksAttempt((n) => n + 1)}
+                >
+                  Reintentar
+                </Button>
+              )}
+            </div>
+          )}
         </div>
 
         {isYouTube && (phase === "compare" || youAnalysis) && (

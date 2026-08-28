@@ -35,7 +35,10 @@ export interface RefineOptions {
   maxEndSec?: number;
   /** Silencio seguido que hace falta para dar la frase por terminada. */
   minSilenceSec?: number;
-  /** Aire que se deja tras el último sonido, para no cortar en seco. */
+  /**
+   * Aire que se deja tras el último sonido, para no cortar en seco. Solo se
+   * come silencio: si el silencio dura menos, se coge lo que haya.
+   */
   cushionSec?: number;
   /** Margen si no se encuentra silencio dentro del tope. */
   fallbackSec?: number;
@@ -44,11 +47,13 @@ export interface RefineOptions {
 }
 
 export const DEFAULT_REFINE: Required<Omit<RefineOptions, "extraEndSec">> = {
-  maxStartSec: 0.4,
-  maxEndSec: 0.7,
+  maxStartSec: 0.5,
+  maxEndSec: 1,
   minSilenceSec: 0.1,
-  cushionSec: 0.06,
-  fallbackSec: 0.18,
+  // Generoso a propósito: como el cojín solo consume silencio, alargarlo deja
+  // respirar el final de la frase sin poder morder la siguiente.
+  cushionSec: 0.25,
+  fallbackSec: 0.2,
 };
 
 export function refineBounds(
@@ -88,7 +93,13 @@ export function refineBounds(
         if (run === 0) silStart = i;
         run++;
         if (run >= runFrames) {
-          endSec = silStart * hop + cushionSec;
+          // El cojín se estira por el silencio, y para en cuanto vuelve a
+          // haber voz: así se puede ser generoso sin morder la frase que
+          // viene detrás.
+          const want = silStart + Math.ceil(cushionSec / hop);
+          let j = silStart + run;
+          while (j < nf && j < want && env.rms[j]! < thr) j++;
+          endSec = j * hop;
           foundSilenceEnd = true;
           break;
         }
@@ -111,7 +122,10 @@ export function refineBounds(
         if (run === 0) silEnd = i + 1;
         run++;
         if (run >= runFrames) {
-          startSec = silEnd * hop - cushionSec;
+          const want = silEnd - Math.ceil(cushionSec / hop);
+          let j = silEnd - run;
+          while (j > 0 && j > want && env.rms[j - 1]! < thr) j--;
+          startSec = j * hop;
           break;
         }
       } else {

@@ -7,6 +7,13 @@ import type { Peaks } from "@/workers/audio-dsp.worker";
 
 type Tone = "reference" | "playing" | "recording";
 
+/** Media anchura de la etiqueta de tiempo, para que no asome por los lados. */
+const HALF_BADGE_PX = 24;
+
+function clampPx(x: number, half: number, width: number): number {
+  return Math.max(half, Math.min(width - half, x));
+}
+
 /**
  * Forma de onda en Canvas propio (§2, §12): silueta rellena en gris,
  * roja al sonar o grabar, con la porción reproducida marcada y una
@@ -198,13 +205,15 @@ export function Waveform({
   }, [peaks, progress, tone, width, height, f0, hover, onSeek]);
 
   return (
-    <div ref={boxRef} className="relative w-full">
+    <div ref={boxRef} className="relative w-full overflow-hidden rounded-lg">
       <canvas
         ref={canvasRef}
         role="img"
         aria-label={label ? `Onda ${label}` : "Forma de onda"}
         style={{ width: "100%", height }}
-        className={cn("rounded-lg bg-panel", onSeek && "cursor-pointer")}
+        // `block`: un canvas en línea deja hueco de línea base debajo, y el
+        // recuadro salía unos píxeles más alto que la propia onda.
+        className={cn("block rounded-lg bg-panel", onSeek && "cursor-pointer")}
         onPointerMove={(e) => {
           if (!onSeek) return;
           const rect = e.currentTarget.getBoundingClientRect();
@@ -222,11 +231,18 @@ export function Waveform({
         }}
       />
 
-      {/* Hora bajo el cursor: saber a qué segundo vas a saltar. */}
+      {/*
+        Hora bajo el cursor: saber a qué segundo vas a saltar.
+
+        Va DENTRO del recuadro y con la posición sujeta en píxeles. Antes iba
+        con `-top-1` y `left: N%`, así que en los extremos la mitad de la
+        etiqueta se salía por el lado y por arriba se montaba sobre el rótulo
+        del panel.
+      */}
       {onSeek && hover !== null && durationSec ? (
         <span
-          className="pointer-events-none absolute -top-1 z-10 -translate-x-1/2 rounded bg-ink px-1.5 py-0.5 font-mono text-[10px] font-bold text-white"
-          style={{ left: `${hover * 100}%` }}
+          className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded bg-ink px-1.5 py-0.5 font-mono text-[10px] font-bold text-white"
+          style={{ left: clampPx(hover * width, HALF_BADGE_PX, width) }}
         >
           {fmtClock(hover * durationSec)}
         </span>

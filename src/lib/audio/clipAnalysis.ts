@@ -115,10 +115,18 @@ export async function ensureClipLoaded(
 }
 
 /**
+ * Análisis en curso, por ruta. Dos efectos pueden pedir la MISMA ronda a la
+ * vez —al montar la pantalla y al fijarse la ronda—, y entonces se calculaba
+ * dos veces y se escribía el mismo archivo por duplicado. Compartir la
+ * promesa ahorra el trabajo repetido y evita la escritura doble.
+ */
+const analysisInFlight = new Map<string, Promise<Analysis>>();
+
+/**
  * Análisis de una ronda. Los tiempos son absolutos del medio; dentro se
  * traducen a la posición relativa dentro del recorte ya decodificado.
  */
-export async function roundAnalysis(
+export function roundAnalysis(
   file: Blob,
   clipId: string,
   clipStartSec: number,
@@ -130,30 +138,41 @@ export async function roundAnalysis(
   opts: LoadOptions = {},
 ): Promise<Analysis> {
   const path = analysisPath("round", roundId, roundStartSec, roundEndSec);
-  if (await blobExists(path)) {
-    try {
-      return deserializeAnalysis(await readBlob(path));
-    } catch {
-      /* formato viejo: se recalcula */
-    }
-  }
+  const running = analysisInFlight.get(path);
+  if (running) return running;
 
-  const token = await ensureClipLoaded(
-    file,
-    clipId,
-    clipStartSec,
-    clipEndSec,
-    opts,
-  );
-  const a = await dsp().analyzeSub(
-    token,
-    Math.max(0, roundStartSec - clipStartSec),
-    Math.max(0, roundEndSec - clipStartSec),
-    buckets,
-  );
-  if (!a) throw new Error("No se pudo analizar esta ronda.");
-  await putBlob(path, serializeAnalysis(a), "analysis", roundId);
-  return a;
+  const job = (async () => {
+    if (await blobExists(path)) {
+      try {
+        return deserializeAnalysis(await readBlob(path));
+      } catch {
+        /* formato viejo: se recalcula */
+      }
+    }
+
+    const token = await ensureClipLoaded(
+      file,
+      clipId,
+      clipStartSec,
+      clipEndSec,
+      opts,
+    );
+    const a = await dsp().analyzeSub(
+      token,
+      Math.max(0, roundStartSec - clipStartSec),
+      Math.max(0, roundEndSec - clipStartSec),
+      buckets,
+    );
+    if (!a) throw new Error("No se pudo analizar esta ronda.");
+    await putBlob(path, serializeAnalysis(a), "analysis", roundId);
+    return a;
+  })();
+
+  analysisInFlight.set(path, job);
+  void job.catch(() => {}).finally(() => {
+    if (analysisInFlight.get(path) === job) analysisInFlight.delete(path);
+  });
+  return job;
 }
 
 /**

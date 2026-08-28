@@ -30,24 +30,58 @@ async function fileHandle(
   return dir.getFileHandle(name, { create });
 }
 
+/**
+ * Una cola por ruta: dos operaciones sobre el MISMO archivo nunca se solapan.
+ *
+ * OPFS solo permite un access handle abierto por archivo. Como Comlink lanza
+ * las llamadas en paralelo, bastaba con que dos efectos pidieran el mismo
+ * análisis a la vez para que la segunda escritura reventara con "Access
+ * Handles cannot be created if there is another open Access Handle". Encolar
+ * por ruta lo elimina, y no serializa archivos distintos, que sí pueden ir a
+ * la vez.
+ */
+const chains = new Map<string, Promise<void>>();
+
+function serial<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const prev = chains.get(path) ?? Promise.resolve();
+  // Se encadena pase lo que pase con la anterior: un fallo no debe bloquear
+  // para siempre las operaciones siguientes sobre ese archivo.
+  const run = prev.then(fn, fn);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  chains.set(path, settled);
+  void settled.then(() => {
+    if (chains.get(path) === settled) chains.delete(path);
+  });
+  return run;
+}
+
 const api = {
-  async write(path: string, data: ArrayBuffer): Promise<number> {
-    const fh = await fileHandle(path, true);
-    const access = await fh.createSyncAccessHandle();
-    try {
-      access.truncate(0);
-      access.write(new Uint8Array(data), { at: 0 });
-      access.flush();
-      return access.getSize();
-    } finally {
-      access.close();
-    }
+  write(path: string, data: ArrayBuffer): Promise<number> {
+    return serial(path, async () => {
+      const fh = await fileHandle(path, true);
+      const access = await fh.createSyncAccessHandle();
+      try {
+        access.truncate(0);
+        access.write(new Uint8Array(data), { at: 0 });
+        access.flush();
+        return access.getSize();
+      } finally {
+        access.close();
+      }
+    });
   },
 
-  async read(path: string): Promise<ArrayBuffer> {
-    const fh = await fileHandle(path, false);
-    const file = await fh.getFile();
-    return file.arrayBuffer();
+  read(path: string): Promise<ArrayBuffer> {
+    // También va por la cola: leer un archivo a medio escribir daría un
+    // análisis truncado, que es peor que esperar unos milisegundos.
+    return serial(path, async () => {
+      const fh = await fileHandle(path, false);
+      const file = await fh.getFile();
+      return file.arrayBuffer();
+    });
   },
 
   async exists(path: string): Promise<boolean> {
@@ -59,16 +93,18 @@ const api = {
     }
   },
 
-  async remove(path: string): Promise<void> {
-    const parts = path.split("/").filter(Boolean);
-    const name = parts.pop();
-    if (!name) return;
-    try {
-      const dir = await dirHandle(parts.join("/"), false);
-      await dir.removeEntry(name, { recursive: true });
-    } catch {
-      /* ya no existe */
-    }
+  remove(path: string): Promise<void> {
+    return serial(path, async () => {
+      const parts = path.split("/").filter(Boolean);
+      const name = parts.pop();
+      if (!name) return;
+      try {
+        const dir = await dirHandle(parts.join("/"), false);
+        await dir.removeEntry(name, { recursive: true });
+      } catch {
+        /* ya no existe */
+      }
+    });
   },
 
   /** Lista recursiva de rutas de archivo bajo `prefix` (vacío = raíz). */

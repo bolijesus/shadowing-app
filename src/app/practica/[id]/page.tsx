@@ -592,6 +592,7 @@ export default function PracticePlayerPage() {
       const scores = Object.values(savedScores.current);
       await db().practices.update(practiceId, {
         lastPracticedAt: Date.now(),
+        completedLaps: (practice?.completedLaps ?? 0) + 1,
         lastScore: scores.length
           ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
           : undefined,
@@ -626,13 +627,19 @@ export default function PracticePlayerPage() {
   }
 
   const showTextMode = practice.showText;
+  // Escalera de texto (§7.A): la vuelta 1 muestra el texto entero, la 2 al
+  // 40 %, la 3 lo oculta. Va por VUELTA, no por ronda: antes se atenuaba ya
+  // en la segunda ronda de la primera pasada y parecía texto desactivado.
+  const lap = practice.completedLaps ?? 0;
   const textOpacity =
     textHidden || showTextMode === "never"
       ? 0
-      : showTextMode === "fade" && idx >= 1
-        ? idx >= 2
+      : showTextMode === "fade"
+        ? lap >= 2
           ? 0
-          : 0.4
+          : lap === 1
+            ? 0.4
+            : 1
         : 1;
 
   return (
@@ -713,6 +720,14 @@ export default function PracticePlayerPage() {
             <div>
               <p className="eyebrow">{practice.title}</p>
               <h1 className="h-display mt-1 text-2xl">Imita al modelo</h1>
+              {showTextMode === "fade" && lap > 0 && (
+                <p className="mt-1 text-xs font-semibold text-ink-soft">
+                  Vuelta {lap + 1} ·{" "}
+                  {lap === 1
+                    ? "el texto se atenúa a propósito, para pasar del ojo al oído"
+                    : "sin texto: ya deberías poder seguirlo de oído"}
+                </p>
+              )}
             </div>
             <div className="flex shrink-0 gap-2">
               <button

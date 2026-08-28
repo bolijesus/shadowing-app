@@ -112,12 +112,13 @@ export function PhraseWithIpa({
                   "relative text-left",
                   ipa &&
                     "cursor-help underline decoration-dotted decoration-line-strong underline-offset-4",
-                  // En karaoke lo aún no dicho se atenúa; el resto va normal.
-                  karaoke && fill < 1 && "text-ink-soft",
                 )}
                 aria-label={ipa ? `${w}, se pronuncia ${ipa}` : w}
               >
                 {w}
+                {/* Karaoke: lo ya dicho se pinta encima en rojo. El texto
+                    que falta se queda en su color normal, no atenuado: si no,
+                    una ronda sin reproducir parece desactivada. */}
                 {karaoke && fill > 0 && (
                   <span
                     aria-hidden

@@ -264,10 +264,21 @@ export default function ResultsPage() {
         </section>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Link href={`/practica/${practice.id}`}>
           <Button>Repetir práctica</Button>
         </Link>
+        {practice.showText === "fade" && (practice.completedLaps ?? 0) > 0 && (
+          <Button
+            variant="outline"
+            onClick={() =>
+              db().practices.update(practice.id, { completedLaps: 0 })
+            }
+            title="Vuelve a mostrar el texto completo desde la vuelta 1"
+          >
+            Reiniciar escalera de texto
+          </Button>
+        )}
         <Link href={`/practica/${practice.id}/editar`}>
           <Button variant="outline">Editar rondas</Button>
         </Link>

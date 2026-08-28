@@ -1,7 +1,8 @@
 /**
  * Tiempos aproximados por palabra, para el resaltado tipo karaoke.
  *
- * Sin ASR no hay tiempos reales (§6.4). El reparto proporcional a la
+ * No hay tiempos reales por palabra: harían falta reconocimiento de voz.
+ * El reparto proporcional a la
  * longitud de cada palabra es la aproximación que indica el prompt, pero a
  * secas falla: si la frase empieza con medio segundo de silencio, todas las
  * palabras se adelantan. Por eso, cuando hay envolvente de energía, se

@@ -17,31 +17,20 @@ export const PROVIDERS: ProviderMeta[] = [
   {
     id: "browser",
     label: "Voz / dictado del navegador",
-    capabilities: ["tts", "asr"],
+    capabilities: ["tts"],
     keyless: true,
     models: [],
     docsNote:
-      "TTS: speechSynthesis, gratis y sin conexión. ASR: SpeechRecognition — solo Chrome, solo escucha en directo (no sirve para puntuar una toma ya grabada) y ENVÍA TU VOZ A GOOGLE.",
-  },
-  {
-    id: "whisper-local",
-    label: "Whisper local (en el dispositivo)",
-    capabilities: ["asr"],
-    keyless: true,
-    models: ["Xenova/whisper-tiny", "Xenova/whisper-base"],
-    docsNote:
-      "Se descarga una vez (40–82 MB según el modelo) y luego funciona sin conexión. Tu voz no sale del dispositivo. Es el motor por defecto.",
+      "speechSynthesis del navegador: gratis, sin key y sin conexión. Calidad menor que la de los proveedores con API.",
   },
   {
     id: "openai",
     label: "OpenAI",
-    capabilities: ["tts", "asr", "llm"],
+    capabilities: ["tts", "llm"],
     models: [
       "gpt-4o-mini-tts",
       "tts-1",
       "tts-1-hd",
-      "whisper-1",
-      "gpt-4o-transcribe",
       "gpt-4o-mini",
       "gpt-4o",
     ],
@@ -52,7 +41,7 @@ export const PROVIDERS: ProviderMeta[] = [
   {
     id: "gemini",
     label: "Google Gemini",
-    capabilities: ["tts", "asr", "llm"],
+    capabilities: ["tts", "llm"],
     models: [
       "gemini-2.5-flash-preview-tts",
       "gemini-2.5-pro-preview-tts",
@@ -70,14 +59,6 @@ export const PROVIDERS: ProviderMeta[] = [
     models: ["eleven_multilingual_v2", "eleven_turbo_v2_5"],
     keyHint: "xi-api-key",
     docsNote: "Restringe la key y vigila el consumo de caracteres.",
-  },
-  {
-    id: "deepgram",
-    label: "Deepgram",
-    capabilities: ["asr"],
-    models: ["nova-2", "nova-3"],
-    keyHint: "Token …",
-    docsNote: "Transcripción con timestamps por palabra.",
   },
 ];
 
@@ -131,9 +112,6 @@ export async function testConnection(
     } else if (id === "elevenlabs") {
       url = "https://api.elevenlabs.io/v1/user";
       headers = { "xi-api-key": cfg.apiKey };
-    } else if (id === "deepgram") {
-      url = "https://api.deepgram.com/v1/projects";
-      headers = { Authorization: `Token ${cfg.apiKey}` };
     } else {
       return { ok: false, detail: "Prueba no implementada para este proveedor." };
     }

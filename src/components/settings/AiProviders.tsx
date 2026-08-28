@@ -40,7 +40,6 @@ import { useConfirm } from "@/components/ui/confirm";
 
 const CAP_LABEL: Record<Capability, string> = {
   tts: "Voz generada (TTS)",
-  asr: "Reconocimiento de voz (ASR)",
   llm: "Modelo de lenguaje (LLM)",
 };
 
@@ -99,7 +98,7 @@ export function AiProviders() {
     <div className="space-y-4">
       <div>
         <Eyebrow>Proveedores de IA</Eyebrow>
-        <h2 className="h-display mt-1 text-xl">Voz, dictado y texto</h2>
+        <h2 className="h-display mt-1 text-xl">Voz y texto</h2>
       </div>
 
       <div className="rounded-xl border-l-4 border-brand bg-brand-tint p-4 text-sm text-brand-ink">
@@ -206,11 +205,11 @@ export function AiProviders() {
       )}
 
       {!locked &&
-        (["tts", "asr", "llm"] as Capability[]).map((cap) => {
+        (["tts", "llm"] as Capability[]).map((cap) => {
           const options = providersFor(cap);
           const selectedId =
             store.selected[cap] ??
-            (cap === "tts" ? "browser" : cap === "asr" ? "whisper-local" : "openai");
+            (cap === "tts" ? "browser" : "openai");
           return (
             <Card key={cap} className="space-y-3">
               <Field label={CAP_LABEL[cap]}>
@@ -253,9 +252,8 @@ export function AiProviders() {
       </Button>
       {confirmNode}
       <p className="text-xs text-ink-soft">
-        Por defecto la app usa la voz del navegador (sin key) y, más adelante,
-        Whisper local para el dictado. No necesitas configurar nada para
-        practicar.
+        Por defecto la app usa la voz del navegador, que no necesita ninguna
+        key. No hace falta configurar nada para practicar.
       </p>
     </div>
   );
@@ -286,8 +284,7 @@ function ProviderEditor({
 
   const models = meta.models.filter((m) => {
     if (capability === "tts") return /tts/i.test(m);
-    if (capability === "asr") return /whisper|transcribe|nova/i.test(m);
-    return !/tts|whisper|transcribe|nova/i.test(m);
+    return !/tts/i.test(m);
   });
 
   return (

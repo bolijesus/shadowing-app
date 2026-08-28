@@ -4,35 +4,41 @@ import { dynamicRangeSemitones } from "@/lib/dsp/f0";
 import type { Analysis } from "@/workers/audio-dsp.worker";
 
 /**
- * Puntuación (§6.6). Cinco componentes 0–100.
+ * Puntuación (§6.6). Cuatro componentes acústicos 0–100. El quinto que define
+ * el spec, «palabras», necesitaba reconocimiento de voz y ya no existe.
  * Regla dura (§13.9): un componente que no se ha podido calcular NO se
  * inventa — se omite y el total se renormaliza sobre los presentes.
  */
 
 /**
- * 2 → 3: entra el componente `words`, que necesita ASR. Las notas anteriores
- * se calcularon sin él y renormalizadas sobre cuatro componentes, así que no
- * son comparables con las nuevas: las estadísticas deben agrupar por esto.
+ * Versión del motor de puntuación. Se persiste en cada toma para que las
+ * estadísticas no mezclen notas calculadas con criterios distintos.
+ *
+ * La 3 llegó a existir brevemente con un componente `words` que dependía de
+ * reconocimiento de voz; al retirarse el ASR se vuelve a puntuar como en la
+ * 2, así que se marca 4 para no confundirla con ninguna de las anteriores.
  */
-export const ENGINE_VERSION = 3;
+export const ENGINE_VERSION = 4;
 
 export type ComponentKey =
-  | "words"
   | "intonation"
   | "timing"
   | "rhythmShape"
   | "durationMatch";
 
 export const COMPONENT_LABEL: Record<ComponentKey, string> = {
-  words: "Palabras",
   intonation: "Acento y entonación",
   timing: "Ritmo",
   rhythmShape: "Forma rítmica medida",
   durationMatch: "Duración medida",
 };
 
+/**
+ * Pesos de §6.6 tal cual. No suman 1 porque falta el 0,3 de «palabras»: el
+ * total se renormaliza sobre los componentes presentes, así que la proporción
+ * entre estos cuatro es la que manda.
+ */
 export const DEFAULT_WEIGHTS: Record<ComponentKey, number> = {
-  words: 0.3,
   intonation: 0.25,
   timing: 0.2,
   rhythmShape: 0.15,
@@ -54,7 +60,6 @@ export interface RoundScore {
     pausesModel: number;
     pausesTake: number;
   };
-  asrText?: string;
   tip?: string;
 }
 
@@ -100,9 +105,6 @@ export interface ScoreArgs {
    * el ejercicio ni siquiera pide.
    */
   only?: ComponentKey[];
-  /** Presentes solo cuando hay ASR (fase de IA). */
-  asrText?: string;
-  referenceText?: string;
 }
 
 export function scoreRound(args: ScoreArgs): RoundScore {
@@ -153,11 +155,6 @@ export function scoreRound(args: ScoreArgs): RoundScore {
     );
   }
 
-  // `words` solo existe cuando hay ASR de verdad (fase de IA).
-  if (args.asrText !== undefined && args.referenceText) {
-    components.words = wordsScore(args.asrText, args.referenceText);
-  }
-
   // Si el modo solo mide ciertos componentes, los demás se descartan antes
   // de renormalizar: no se ocultan, es que no forman parte del ejercicio.
   if (args.only) {
@@ -197,11 +194,10 @@ export function scoreRound(args: ScoreArgs): RoundScore {
     weights,
     engineVersion: ENGINE_VERSION,
     detail,
-    asrText: args.asrText,
   };
 }
 
-/* --------- WER (se activa con ASR en la fase de IA) --------- */
+/* --- WER: se conserva para el modo Dictado, que compara texto escrito --- */
 
 export function normalizeForWer(s: string): string[] {
   return s

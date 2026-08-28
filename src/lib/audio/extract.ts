@@ -5,12 +5,11 @@ import { decodeRange } from "./decode";
 /**
  * Extrae un rango del medio como WAV mono 16 kHz.
  *
- * Sirve para dos cosas del prompt: transcribir SOLO el tramo elegido en vez
- * del archivo entero (§5), y materializar un recorte cuando el usuario lo
- * pide explícitamente (§5, "Exportar recorte").
+ * Materializa un recorte cuando el usuario lo pide explícitamente
+ * (§5, "Exportar recorte"): solo el tramo elegido, nunca el archivo entero.
  *
- * 16 kHz mono es lo que quiere Whisper y lo que §13.6 da por suficiente para
- * analizar; además pesa poco, que importa si se guarda.
+ * 16 kHz mono es lo que §13.6 da por suficiente para analizar; además pesa
+ * poco, que importa si se guarda.
  */
 
 export const EXTRACT_SAMPLE_RATE = 16000;

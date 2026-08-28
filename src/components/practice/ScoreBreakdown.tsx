@@ -33,7 +33,7 @@ export function BigScore({
 }
 
 /** Tres tarjetas iguales para los componentes principales. */
-const PRIMARY: ComponentKey[] = ["words", "timing", "intonation"];
+const PRIMARY: ComponentKey[] = ["timing", "intonation"];
 const SECONDARY: ComponentKey[] = ["durationMatch", "rhythmShape"];
 
 const SECONDARY_LABEL: Record<string, string> = {
@@ -96,13 +96,6 @@ export function ScoreBreakdown({ score }: { score: RoundScore }) {
       )}
 
       <p className="text-xs text-ink-soft">{scoreBasisLabel(score)}</p>
-
-      {!score.present.includes("words") && (
-        <p className="text-xs text-ink-soft">
-          «Palabras» necesita reconocimiento de voz; se activa al configurar un
-          motor de ASR. No se rellena con un número inventado.
-        </p>
-      )}
 
       {advice && (
         <p className="rounded-lg border-l-4 border-brand bg-brand-tint px-4 py-3 text-[15px] text-ink">

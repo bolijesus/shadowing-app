@@ -2,7 +2,6 @@
 
 import { db } from "@/lib/db/db";
 import type { BlobCategory, BlobRecord } from "@/lib/types";
-import { localModelUsage } from "@/lib/asr/models";
 
 export const CATEGORY_LABEL: Record<BlobCategory, string> = {
   media: "Medios importados",
@@ -51,21 +50,7 @@ export async function getStorageBreakdown(): Promise<StorageBreakdown> {
     }),
   );
 
-  // Los modelos de IA viven en Cache Storage, no en OPFS: no están en el
-  // libro de bytes y hay que sumarlos aparte o esta categoría miente.
-  const models = await localModelUsage().catch(() => ({
-    bytes: 0,
-    files: 0,
-    models: [],
-  }));
-  const modelRow = byCategory.find((c) => c.category === "model");
-  if (modelRow) {
-    modelRow.bytes += models.bytes;
-    modelRow.count += models.files;
-  }
-
-  const ledgerTotal =
-    rows.reduce((s, r) => s + r.bytes, 0) + models.bytes;
+  const ledgerTotal = rows.reduce((s, r) => s + r.bytes, 0);
   const usage = est.usage ?? 0;
 
   return {

@@ -11,11 +11,11 @@
 const LS_KEY = "shadowing.apiKeys";
 const PBKDF2_ITERS = 210_000;
 
-export type Capability = "tts" | "asr" | "llm";
+export type Capability = "tts" | "llm";
 
 export interface ProviderConfig {
   apiKey?: string;
-  /** Modelo por capacidad: el de LLM no sirve para TTS ni para ASR. */
+  /** Modelo por capacidad: el de LLM no sirve para generar voz. */
   models?: Partial<Record<Capability, string>>;
   /** Compatibilidad con configuraciones antiguas de un solo modelo. */
   model?: string;

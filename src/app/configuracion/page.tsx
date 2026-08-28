@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/primitives";
 import { useSettings } from "@/lib/stores/settings";
 import { AiProviders } from "@/components/settings/AiProviders";
-import { LocalEngines } from "@/components/settings/LocalEngines";
 
 const LANGS = [
   ["en-US", "Inglés (EE. UU.)"],
@@ -175,7 +174,6 @@ export default function SettingsPage() {
       </Card>
 
       <AiProviders />
-      <LocalEngines />
     </div>
   );
 }

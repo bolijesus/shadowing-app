@@ -35,11 +35,6 @@ export function buildAdvice(score: RoundScore): string | undefined {
     return "El acento cae en sílabas distintas a las del modelo: marca más fuerte las tónicas y reduce las átonas.";
   }
 
-  // 5. Palabras (solo con ASR).
-  if (has("words") && (score.components.words ?? 100) < 70) {
-    return "Se te han perdido palabras respecto al texto: baja la velocidad y articula los finales.";
-  }
-
   if (score.total >= 85) {
     return "Muy cerca del modelo. Sube la velocidad un escalón para consolidarlo.";
   }
@@ -48,15 +43,11 @@ export function buildAdvice(score: RoundScore): string | undefined {
 
 /** Etiqueta corta de cómo se ha calculado la nota (honestidad §13.9). */
 export function scoreBasisLabel(score: RoundScore): string {
-  const acoustic = score.present.filter((k) => k !== "words");
-  if (score.present.includes("words") && acoustic.length) {
-    return "Nota híbrida · reconocimiento de voz más duración y ritmo medidos";
-  }
-  if (acoustic.length) {
+  if (score.present.includes("intonation")) {
     return "Nota acústica medida · duración, ritmo y entonación frente al modelo";
   }
-  if (score.present.includes("words")) {
-    return "Solo palabras · sin audio del modelo no hay comparación acústica";
+  if (score.present.length) {
+    return "Nota acústica medida · duración y ritmo; la entonación no se pudo medir";
   }
   return "Sin datos suficientes para puntuar";
 }

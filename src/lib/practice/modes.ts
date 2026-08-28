@@ -11,7 +11,7 @@ export interface ModeMeta {
   summary: string;
   built: boolean;
   /** Qué necesita para funcionar; se avisa antes de elegirlo. */
-  needs?: "model-audio" | "asr" | "speakers";
+  needs?: "model-audio" | "speakers";
 }
 
 export const MODES: ModeMeta[] = [
@@ -56,16 +56,14 @@ export const MODES: ModeMeta[] = [
   {
     id: "cloze",
     label: "Completar palabras",
-    summary: "Rellenas huecos escribiendo o hablando.",
+    summary: "Rellenas huecos escribiendo.",
     built: false,
-    needs: "asr",
   },
   {
     id: "minimal-pairs",
     label: "Pares mínimos",
-    summary: "Distingues sonidos parecidos: ship / sheep.",
+    summary: "Escuchas y distingues sonidos parecidos: ship / sheep.",
     built: false,
-    needs: "asr",
   },
   {
     id: "stress-tap",

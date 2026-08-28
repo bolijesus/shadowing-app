@@ -46,6 +46,8 @@ async function webGpuUsable(): Promise<boolean> {
 let pipe: Pipe | null = null;
 let loadedModel = "";
 let loadedDevice: "webgpu" | "wasm" = "wasm";
+type Dtype = "fp32" | "fp16" | "q8" | "int8" | "uint8" | "q4" | "bnb4";
+let loadedDtype: Dtype | "" = "";
 
 async function ensurePipeline(
   model: string,
@@ -65,33 +67,61 @@ async function ensurePipeline(
     env.backends.onnx.wasm.wasmPaths = `${self.location.origin}/ort/`;
   }
 
-  const build = async (device: "webgpu" | "wasm") =>
+  const build = async (device: "webgpu" | "wasm", dtype: Dtype) =>
     (await pipeline("automatic-speech-recognition", model, {
       device,
-      dtype: device === "webgpu" ? "fp32" : "q8",
+      dtype,
       progress_callback: onProgress as never,
     })) as unknown as Pipe;
 
   // No basta con que exista navigator.gpu: puede estar el API y no haber
   // adaptador (GPU sin soporte, driver bloqueado, máquina virtual). Hay que
-  // pedirlo de verdad, o se elige WebGPU y luego revienta.
-  loadedDevice = (await webGpuUsable()) ? "webgpu" : "wasm";
+  // pedirlo de verdad, o se elige WebGPU y luego revienta al construir.
+  const gpu = await webGpuUsable();
 
-  try {
-    pipe = await build(loadedDevice);
-  } catch (e) {
-    if (loadedDevice === "wasm") {
-      throw new Error(
-        `No se pudo iniciar el motor de voz: ${
-          e instanceof Error ? e.message : String(e)
+  /**
+   * Escalera de configuraciones, de la más ligera a la más compatible.
+   *
+   * Las variantes cuantizadas pesan mucho menos, pero algunas combinaciones
+   * de onnxruntime y modelo fallan al crear la sesión ("Missing required
+   * scale ... MatMulNBits"). En vez de fijar una y confiar en que funcione en
+   * todas las máquinas, se prueban por orden y se usa la primera que arranca.
+   * fp32 va al final: es la que siempre funciona y la que más pesa.
+   */
+  const ladder: { device: "webgpu" | "wasm"; dtype: Dtype }[] = [
+    ...(gpu
+      ? [
+          { device: "webgpu" as const, dtype: "fp32" as Dtype },
+          { device: "webgpu" as const, dtype: "q4" as Dtype },
+        ]
+      : []),
+    { device: "wasm" as const, dtype: "q8" as Dtype },
+    { device: "wasm" as const, dtype: "int8" as Dtype },
+    { device: "wasm" as const, dtype: "fp32" as Dtype },
+  ];
+
+  const failures: string[] = [];
+  for (const step of ladder) {
+    try {
+      pipe = await build(step.device, step.dtype);
+      loadedDevice = step.device;
+      loadedDtype = step.dtype;
+      break;
+    } catch (e) {
+      failures.push(
+        `${step.device}/${step.dtype}: ${
+          e instanceof Error ? e.message.split("\n")[0] : String(e)
         }`,
       );
     }
-    // La GPU falló al compilar los shaders: se cae a CPU en vez de dejarte
-    // sin transcripción.
-    loadedDevice = "wasm";
-    pipe = await build("wasm");
   }
+
+  if (!pipe) {
+    throw new Error(
+      `Ninguna configuración arrancó en este navegador.\n${failures.join("\n")}`,
+    );
+  }
+
   loadedModel = model;
   return pipe;
 }
@@ -100,11 +130,11 @@ const api = {
   /** Descarga y compila el modelo, informando del progreso. */
   async warmup(model: string, onProgress?: ProgressCb): Promise<string> {
     await ensurePipeline(model, onProgress ? Comlink.proxy(onProgress) : undefined);
-    return loadedDevice;
+    return loadedDtype ? `${loadedDevice}/${loadedDtype}` : loadedDevice;
   },
 
   device(): string {
-    return loadedDevice;
+    return loadedDtype ? `${loadedDevice}/${loadedDtype}` : loadedDevice;
   },
 
   /**
@@ -152,6 +182,7 @@ const api = {
   release(): void {
     pipe = null;
     loadedModel = "";
+    loadedDtype = "";
   },
 };
 

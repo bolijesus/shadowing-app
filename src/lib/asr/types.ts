@@ -59,24 +59,31 @@ export class AsrError extends Error {
   }
 }
 
-/** Modelos locales ofrecidos, con su peso para poder avisar antes (§2). */
+/**
+ * Modelos locales ofrecidos. `mb` es el peso de la variante cuantizada, que
+ * es la que se intenta primero; si esa no arranca en el navegador se cae a
+ * fp32, que ocupa del orden de tres veces más. Por eso se anuncia un rango.
+ */
 export const WHISPER_MODELS = [
   {
     id: "onnx-community/whisper-tiny.en",
     label: "Whisper tiny · solo inglés",
     mb: 42,
+    mbFull: 150,
     englishOnly: true,
   },
   {
     id: "onnx-community/whisper-tiny",
     label: "Whisper tiny · multilingüe",
     mb: 45,
+    mbFull: 155,
     englishOnly: false,
   },
   {
     id: "onnx-community/whisper-base",
     label: "Whisper base · multilingüe, más preciso",
     mb: 82,
+    mbFull: 290,
     englishOnly: false,
   },
 ] as const;

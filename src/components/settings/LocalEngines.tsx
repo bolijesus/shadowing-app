@@ -88,7 +88,7 @@ export function LocalEngines() {
         label="Modelo"
         hint={
           info
-            ? `Ocupa unos ${info.mb} MB.${
+            ? `Entre ${info.mb} y ${info.mbFull} MB según la variante que acepte tu navegador.${
                 info.englishOnly ? " Solo transcribe inglés." : ""
               }`
             : undefined
@@ -116,7 +116,7 @@ export function LocalEngines() {
         )}
         {device && (
           <Pill tone="data">
-            {device === "webgpu" ? "Acelerado por GPU" : "CPU (WASM)"}
+            {device.startsWith("webgpu") ? "GPU" : "CPU"} · {device}
           </Pill>
         )}
       </div>
@@ -139,9 +139,14 @@ export function LocalEngines() {
         </p>
       )}
       {error && (
-        <p className="rounded-lg border-l-4 border-brand bg-brand-tint px-3 py-2 text-sm text-ink">
-          {error}
-        </p>
+        <div className="rounded-lg border-l-4 border-brand bg-brand-tint px-3 py-2 text-sm text-ink">
+          {/* Se muestra el detalle de cada intento: si ninguna configuración
+              arranca, saber cuál falló y por qué es lo único accionable. */}
+          <p className="font-bold">No se pudo preparar el motor</p>
+          <pre className="mt-1 whitespace-pre-wrap font-mono text-xs">
+            {error}
+          </pre>
+        </div>
       )}
 
       <div className="flex flex-wrap gap-2">

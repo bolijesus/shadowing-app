@@ -38,7 +38,10 @@ import { scoreRound, contourForDisplay } from "@/lib/scoring/scoreRound";
 import { buildAdvice } from "@/lib/scoring/advice";
 import { WaveformPanel } from "@/components/waveform/WaveformPanel";
 import { ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
-import { FileTooLargeToDecode } from "@/lib/audio/decode";
+import {
+  FileTooLargeToDecode,
+  SLOW_DECODE_BYTES,
+} from "@/lib/audio/decode";
 import { speakWithBrowser, cancelBrowserSpeech } from "@/lib/tts/browser";
 import type { Peaks } from "@/workers/audio-dsp.worker";
 import { putBlob } from "@/lib/storage/blobStore";
@@ -103,6 +106,8 @@ export default function PracticePlayerPage() {
   const sourceKind = media?.source.kind ?? "local-file";
   const isYouTube = sourceKind === "youtube";
   const isTts = sourceKind === "tts";
+  /** Archivo con imagen: se pinta el vídeo del recorte, no solo la onda. */
+  const showsVideo = !!media?.hasVideo && !isYouTube;
   const [sourceIssue, setSourceIssue] = React.useState<
     | { kind: "permission"; handle: FileSystemFileHandle; fileName: string }
     | { kind: "missing"; reason: string }
@@ -143,6 +148,7 @@ export default function PracticePlayerPage() {
   const recorderRef = React.useRef<VoiceRecorder | null>(null);
   const objectUrlRef = React.useRef<string | null>(null);
   const desiredRangeRef = React.useRef<[number, number]>([0, 0]);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
   const ytHostRef = React.useRef<HTMLDivElement>(null);
   const ytRef = React.useRef<YouTubeRangePlayer | null>(null);
 
@@ -274,9 +280,12 @@ export default function PracticePlayerPage() {
     if (!file || !media) return;
     const url = URL.createObjectURL(file);
     objectUrlRef.current = url;
-    const el = document.createElement(
-      media.hasVideo ? "video" : "audio",
-    ) as HTMLMediaElement;
+    // Con vídeo se usa el <video> del JSX, que sí está en el árbol y por
+    // tanto se ve. Sin vídeo basta un <audio> suelto, sin nada que pintar.
+    const el: HTMLMediaElement =
+      showsVideo && videoRef.current
+        ? videoRef.current
+        : document.createElement("audio");
     el.src = url;
     el.preload = "auto";
     mediaElRef.current = el;
@@ -302,17 +311,25 @@ export default function PracticePlayerPage() {
       cancelAnimationFrame(raf);
       rp.destroy();
       URL.revokeObjectURL(url);
+      // El <video> lo posee React: se le quita la fuente en vez de tirarlo.
+      if (el.tagName === "VIDEO") el.removeAttribute("src");
       playerRef.current = null;
       mediaElRef.current = null;
     };
-  }, [file, media]);
+  }, [file, media, showsVideo]);
 
   /* --- construir picos del recorte --- */
   React.useEffect(() => {
     if (!file || !clip) return;
     let cancelled = false;
     setPeaks(null);
-    setPeaksNote(null);
+    // Con un archivo largo la primera onda tarda: hay que leerlo y
+    // decodificarlo entero. Se avisa en vez de dejar el panel vacío.
+    setPeaksNote(
+      file.size > SLOW_DECODE_BYTES
+        ? "Archivo grande: la primera onda tarda un poco. Después queda guardada."
+        : null,
+    );
     (async () => {
       try {
         const p = await getOrBuildPeaks({
@@ -321,13 +338,16 @@ export default function PracticePlayerPage() {
           startSec: isTts ? 0 : clip.startSec,
           endSec: isTts ? Number.MAX_SAFE_INTEGER : clip.endSec,
         });
-        if (!cancelled) setPeaks(p);
+        if (!cancelled) {
+          setPeaks(p);
+          setPeaksNote(null);
+        }
       } catch (e) {
         if (!cancelled) {
           setPeaksNote(
             e instanceof FileTooLargeToDecode
-              ? "Archivo muy grande: la onda no se muestra en esta versión."
-              : "No se pudo generar la forma de onda.",
+              ? "Archivo demasiado grande para analizarlo en el navegador."
+              : "No se pudo generar la forma de onda. La reproducción sigue funcionando.",
           );
         }
       }
@@ -785,6 +805,17 @@ export default function PracticePlayerPage() {
               {YOUTUBE_LIMITS_NOTE}
             </p>
           </div>
+        )}
+
+        {/* El vídeo se mantiene visible al grabar: en shadowing ayuda a
+            seguir la boca y el gesto del hablante. */}
+        {showsVideo && (
+          <video
+            ref={videoRef}
+            playsInline
+            className="aspect-video w-full rounded-xl bg-panel object-contain"
+            aria-label="Vídeo del recorte"
+          />
         )}
 
         <div className="space-y-3" hidden={isYouTube}>

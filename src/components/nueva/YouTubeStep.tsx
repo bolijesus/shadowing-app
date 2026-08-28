@@ -24,7 +24,10 @@ import {
   type CaptionTrack,
 } from "@/lib/youtube/captions";
 import { parseSubtitles } from "@/lib/subtitles/parse";
-import { segmentFromCues } from "@/lib/subtitles/segmentation";
+import {
+  segmentFromCues,
+  MAX_GROUPED_SEC,
+} from "@/lib/subtitles/segmentation";
 import {
   createClip,
   createMedia,
@@ -57,6 +60,7 @@ export function YouTubeStep({
   >("idle");
   const [manualText, setManualText] = React.useState("");
   const [showText, setShowText] = React.useState<ShowText>("fade");
+  const [phrasesPerRound, setPhrasesPerRound] = React.useState(1);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
@@ -156,8 +160,11 @@ export function YouTubeStep({
   }
 
   const seeds = React.useMemo(
-    () => (cues.length ? segmentFromCues(cues, range.start, range.end) : []),
-    [cues, range.start, range.end],
+    () =>
+      cues.length
+        ? segmentFromCues(cues, range.start, range.end, { phrasesPerRound })
+        : [],
+    [cues, range.start, range.end, phrasesPerRound],
   );
 
   async function create() {
@@ -349,6 +356,29 @@ export function YouTubeStep({
               />
             </Field>
           </Card>
+
+          {cues.length > 0 && (
+            <Card className="space-y-2">
+              <span className="text-sm font-bold">Frases por ronda</span>
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3, 4].map((n) => (
+                  <Button
+                    key={n}
+                    variant={phrasesPerRound === n ? "default" : "outline"}
+                    size="sm"
+                    aria-pressed={phrasesPerRound === n}
+                    onClick={() => setPhrasesPerRound(n)}
+                  >
+                    {n}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-ink-soft">
+                Cuántas frases seguidas quieres imitar de una vez. Las rondas
+                no pasan de {MAX_GROUPED_SEC} s aunque pidas más frases.
+              </p>
+            </Card>
+          )}
 
           <p className="text-sm text-ink-soft">
             {seeds.length || 1} rondas · recorte de {fmtClock(range.end - range.start)}

@@ -1,15 +1,25 @@
 "use client";
 
 /**
- * Decodificación de audio para la forma de onda.
+ * Decodificación de audio para la onda y el análisis.
  *
- * Fase 1: se decodifica el archivo con decodeAudioData y se extrae solo el
- * rango pedido; los picos resultantes se cachean en OPFS y no se vuelve a
- * decodificar. La decodificación parcial por demuxing queda para Fase 2
- * (§13.7). Guarda de tamaño para no agotar memoria con archivos enormes.
+ * Se decodifica a 16 kHz mono: `decodeAudioData` remuestrea al ritmo del
+ * contexto, así que el PCM ocupa unas tres veces menos que a 48 kHz. §13.6
+ * dice que 16 kHz basta para analizar, y el F0 sigue funcionando (la ventana
+ * de 40 ms da 1024 muestras, de sobra para bajar hasta 60 Hz).
+ *
+ * Lo que sigue pendiente (§13.7): decodificar SOLO el rango pedido. Hoy hay
+ * que leer el archivo entero para poder decodificarlo, así que un capítulo
+ * largo tarda la primera vez. El resultado se cachea por clip en OPFS, de
+ * modo que es un coste único.
  */
 
-export const MAX_DECODE_BYTES = 300 * 1024 * 1024;
+export const ANALYSIS_SAMPLE_RATE = 16000;
+
+/** Por encima de esto se avisa de que la primera onda va a tardar. */
+export const SLOW_DECODE_BYTES = 150 * 1024 * 1024;
+
+export const MAX_DECODE_BYTES = 2 * 1024 * 1024 * 1024;
 
 export class FileTooLargeToDecode extends Error {
   constructor(public bytes: number) {
@@ -31,13 +41,23 @@ export async function decodeRange(
 ): Promise<DecodedRange> {
   if (file.size > MAX_DECODE_BYTES) throw new FileTooLargeToDecode(file.size);
 
-  const buf = await file.arrayBuffer();
   const OfflineCtor =
     window.OfflineAudioContext ||
     (window as unknown as { webkitOfflineAudioContext: typeof OfflineAudioContext })
       .webkitOfflineAudioContext;
-  // Contexto efímero solo para decodificar.
-  const tmp = new OfflineCtor(1, 1, 44100);
+
+  // El contexto se crea ANTES de leer el archivo: si el navegador rechaza
+  // los 16 kHz lo hace aquí, en el constructor. Decidirlo después no valdría,
+  // porque decodeAudioData desacopla el ArrayBuffer y no se puede reintentar
+  // con el mismo búfer.
+  let tmp: OfflineAudioContext;
+  try {
+    tmp = new OfflineCtor(1, 1, ANALYSIS_SAMPLE_RATE);
+  } catch {
+    tmp = new OfflineCtor(1, 1, 44100);
+  }
+
+  const buf = await file.arrayBuffer();
   const audioBuf = await tmp.decodeAudioData(buf);
 
   const sr = audioBuf.sampleRate;

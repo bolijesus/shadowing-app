@@ -20,11 +20,18 @@ import {
   type VoiceSelection,
 } from "@/components/nueva/VoicePicker";
 import { prepareAll, prepareRound, type PrepState } from "@/lib/tts/queue";
-import { appendRound, deleteRoundCascade } from "@/lib/db/repositories";
+import {
+  appendRound,
+  countTakesOf,
+  deleteRoundCascade,
+  mergeRoundWithNext,
+  splitRound,
+} from "@/lib/db/repositories";
 import { estimateSpokenSec, splitScript } from "@/lib/text/splitScript";
 import { ttsProvider } from "@/lib/tts/providers";
 import { styleById, type TtsProviderId } from "@/lib/tts/types";
 import { readAsObjectURL } from "@/lib/storage/opfs";
+import { useConfirm } from "@/components/ui/confirm";
 import { OfflineStatus } from "@/components/practice/OfflineStatus";
 import { fmtClock } from "@/lib/util";
 
@@ -70,6 +77,8 @@ export default function EditPracticePage() {
   const [cached, setCached] = React.useState<Record<string, boolean>>({});
   const [bulkOpen, setBulkOpen] = React.useState(false);
   const [bulkText, setBulkText] = React.useState("");
+  const [splitting, setSplitting] = React.useState<string | null>(null);
+  const { confirm, node: confirmNode } = useConfirm();
   const [queueRunning, setQueueRunning] = React.useState(false);
   const abortRef = React.useRef<AbortController | null>(null);
 
@@ -211,6 +220,37 @@ export default function EditPracticePage() {
       abortRef.current.signal,
     );
     setQueueRunning(false);
+  }
+
+  /** Pide permiso si la operación va a tirar grabaciones. */
+  async function okToDiscardTakes(roundIds: string[]): Promise<boolean> {
+    const n = await countTakesOf(roundIds);
+    if (n === 0) return true;
+    return confirm({
+      title: "Se perderán grabaciones",
+      body: `Al cambiar el texto y el rango de la ronda, ${n} ${
+        n === 1 ? "toma grabada deja" : "tomas grabadas dejan"
+      } de corresponder y se ${n === 1 ? "borrará" : "borrarán"}.`,
+      confirmLabel: "Continuar",
+      tone: "danger",
+    });
+  }
+
+  async function mergeWithNext(rid: string) {
+    const i = order.indexOf(rid);
+    const next = order[i + 1];
+    if (!next) return;
+    if (!(await okToDiscardTakes([rid, next]))) return;
+    await mergeRoundWithNext(id, rid);
+    setOrder((o) => o.filter((x) => x !== next));
+    setPrep((s) => ({ ...s, [rid]: "idle" }));
+  }
+
+  async function doSplit(rid: string, atWord: number) {
+    if (!(await okToDiscardTakes([rid]))) return;
+    await splitRound(id, rid, atWord);
+    setSplitting(null);
+    setPrep((s) => ({ ...s, [rid]: "idle" }));
   }
 
   async function addOne(text = "") {
@@ -373,6 +413,27 @@ export default function EditPracticePage() {
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={() => void mergeWithNext(rid)}
+                    disabled={i === order.length - 1}
+                    title="Junta esta ronda con la siguiente"
+                  >
+                    Unir
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setSplitting(splitting === rid ? null : rid)
+                    }
+                    aria-expanded={splitting === rid}
+                    disabled={(texts[rid] ?? "").split(/\s+/).filter(Boolean).length < 2}
+                    title="Parte esta ronda en dos"
+                  >
+                    Partir
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => void remove(rid)}
                     disabled={order.length <= 1}
                     title={
@@ -399,6 +460,36 @@ export default function EditPracticePage() {
                   rows={2}
                 />
               </div>
+
+              {splitting === rid && (
+                <div className="mt-3 rounded-lg border-2 border-line bg-panel p-3">
+                  <p className="mb-2 text-sm font-bold">
+                    ¿Dónde parto la ronda?
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {(texts[rid] ?? "")
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .map((w, wi, arr) =>
+                        wi === 0 ? null : (
+                          <button
+                            key={`${w}-${wi}`}
+                            onClick={() => void doSplit(rid, wi)}
+                            title={`Cortar antes de «${w}»`}
+                            className="rounded border-2 border-line-strong bg-surface px-2 py-1 text-xs font-semibold text-ink hover:border-brand hover:text-brand-ink"
+                          >
+                            ⏐ {w}
+                            {wi === arr.length - 1 ? "" : "…"}
+                          </button>
+                        ),
+                      )}
+                  </div>
+                  <p className="mt-2 text-xs text-ink-soft">
+                    El corte va antes de la palabra que elijas. El tiempo se
+                    reparte según la longitud de cada mitad.
+                  </p>
+                </div>
+              )}
 
               {isTts && (
                 <>
@@ -494,6 +585,7 @@ export default function EditPracticePage() {
         <Link href={`/practica/${id}`}>
           <Button variant="outline">Practicar sin guardar</Button>
         </Link>
+        {confirmNode}
         {dirty && (
           <span className="text-xs font-semibold text-brand-ink">
             Tienes cambios sin guardar

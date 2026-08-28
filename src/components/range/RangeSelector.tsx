@@ -15,12 +15,19 @@ export function RangeSelector({
   end,
   onChange,
   onPreview,
+  onScrub,
 }: {
   duration: number;
   start: number;
   end: number;
   onChange: (start: number, end: number) => void;
   onPreview?: () => void;
+  /**
+   * Se dispara mientras se arrastra un tirador. Sirve para llevar la
+   * previsualización a ese segundo y poder localizar la escena a ojo, en vez
+   * de tener que reproducir el rango cada vez para saber dónde estás.
+   */
+  onScrub?: (sec: number) => void;
 }) {
   const trackRef = React.useRef<HTMLDivElement>(null);
   const [startText, setStartText] = React.useState(fmtClock(start));
@@ -29,8 +36,18 @@ export function RangeSelector({
   React.useEffect(() => setStartText(fmtClock(start)), [start]);
   React.useEffect(() => setEndText(fmtClock(end)), [end]);
 
-  const setStart = (v: number) => onChange(clamp(v, 0, end - 0.2), end);
-  const setEnd = (v: number) => onChange(start, clamp(v, start + 0.2, duration));
+  // Cualquier forma de mover un extremo — arrastrar, ±1s/±5s o las flechas —
+  // lleva también la previsualización a ese punto.
+  const setStart = (v: number) => {
+    const t = clamp(v, 0, end - 0.2);
+    onChange(t, end);
+    onScrub?.(t);
+  };
+  const setEnd = (v: number) => {
+    const t = clamp(v, start + 0.2, duration);
+    onChange(start, t);
+    onScrub?.(t);
+  };
 
   const drag = (which: "start" | "end") => (e: React.PointerEvent) => {
     e.preventDefault();

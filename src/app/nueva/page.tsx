@@ -21,7 +21,10 @@ import {
 } from "@/lib/media/source";
 import { probeMedia } from "@/lib/media/probe";
 import { parseSubtitles } from "@/lib/subtitles/parse";
-import { segmentFromCues } from "@/lib/subtitles/segmentation";
+import {
+  segmentFromCues,
+  MAX_GROUPED_SEC,
+} from "@/lib/subtitles/segmentation";
 import {
   createClip,
   createMedia,
@@ -75,8 +78,31 @@ export default function NuevaPracticaPage() {
   const [showText, setShowText] = React.useState<"always" | "fade" | "never">(
     "fade",
   );
+  const [phrasesPerRound, setPhrasesPerRound] = React.useState(1);
 
   const previewRef = React.useRef<HTMLMediaElement | null>(null);
+  const previewUrlRef = React.useRef<string | null>(null);
+
+  /** Conecta la previsualización al archivo la primera vez que se usa. */
+  const ensurePreview = React.useCallback((): HTMLMediaElement | null => {
+    const el = previewRef.current;
+    if (!el || !file) return null;
+    if (!previewUrlRef.current) {
+      previewUrlRef.current = URL.createObjectURL(file);
+      el.src = previewUrlRef.current;
+    }
+    return el;
+  }, [file]);
+
+  // Un archivo nuevo invalida la URL anterior.
+  React.useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+    };
+  }, [file]);
 
   const onFileChosen = React.useCallback(
     async (f: File, mode: FileMode, hId?: string) => {
@@ -164,9 +190,9 @@ export default function NuevaPracticaPage() {
   const seeds = React.useMemo(
     () =>
       cues.length
-        ? segmentFromCues(cues, range.start, range.end)
+        ? segmentFromCues(cues, range.start, range.end, { phrasesPerRound })
         : [],
-    [cues, range.start, range.end],
+    [cues, range.start, range.end, phrasesPerRound],
   );
 
   async function finish() {
@@ -477,15 +503,38 @@ export default function NuevaPracticaPage() {
             espacio.
           </p>
 
+          {/* Con imagen se ve el vídeo: elegir el minuto de un capítulo de
+              22 min solo de oído es adivinar. Sin imagen, audio oculto. */}
+          {hasVideo ? (
+            <video
+              ref={previewRef as React.RefObject<HTMLVideoElement>}
+              playsInline
+              className="aspect-video w-full rounded-xl bg-panel object-contain"
+              aria-label="Previsualización del recorte"
+            />
+          ) : (
+            <audio ref={previewRef as React.RefObject<HTMLAudioElement>} hidden />
+          )}
+
           <RangeSelector
             duration={duration || range.end}
             start={range.start}
             end={range.end}
             onChange={(s, e) => setRange({ start: s, end: e })}
+            onScrub={(sec) => {
+              // Lleva la imagen al punto que estás moviendo.
+              const el = ensurePreview();
+              if (el) {
+                try {
+                  el.currentTime = sec;
+                } catch {
+                  /* metadata aún no lista */
+                }
+              }
+            }}
             onPreview={async () => {
-              const el = previewRef.current;
-              if (!el || !file) return;
-              if (!el.src) el.src = URL.createObjectURL(file);
+              const el = ensurePreview();
+              if (!el) return;
               el.currentTime = range.start;
               await el.play().catch(() => {});
               const stop = () => {
@@ -497,7 +546,6 @@ export default function NuevaPracticaPage() {
               el.addEventListener("timeupdate", stop);
             }}
           />
-          <audio ref={previewRef as React.RefObject<HTMLAudioElement>} hidden />
 
           {cues.length > 0 && (
             <Button
@@ -542,6 +590,29 @@ export default function NuevaPracticaPage() {
           <h1 className="h-display text-2xl">
             {seeds.length || 1} rondas de práctica
           </h1>
+
+          {cues.length > 0 && (
+            <Card className="space-y-2">
+              <span className="text-sm font-bold">Frases por ronda</span>
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3, 4].map((n) => (
+                  <Button
+                    key={n}
+                    variant={phrasesPerRound === n ? "default" : "outline"}
+                    size="sm"
+                    aria-pressed={phrasesPerRound === n}
+                    onClick={() => setPhrasesPerRound(n)}
+                  >
+                    {n}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-ink-soft">
+                Cuántas frases seguidas quieres imitar de una vez. Las rondas
+                no pasan de {MAX_GROUPED_SEC} s aunque pidas más frases.
+              </p>
+            </Card>
+          )}
 
           <ol className="space-y-2">
             {(seeds.length

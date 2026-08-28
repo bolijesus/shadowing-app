@@ -124,6 +124,114 @@ export async function appendRound(
   return round;
 }
 
+/** Cuántas tomas se perderían al cambiar el rango de estas rondas. */
+export async function countTakesOf(roundIds: string[]): Promise<number> {
+  if (!roundIds.length) return 0;
+  return db().takes.where("roundId").anyOf(roundIds).count();
+}
+
+/**
+ * Une una ronda con la siguiente: extiende el rango, concatena el texto y
+ * borra la segunda. Las tomas de ambas se pierden, porque una grabación
+ * deja de corresponder a la ronda si cambia su texto y su rango.
+ */
+export async function mergeRoundWithNext(
+  practiceId: string,
+  roundId: string,
+): Promise<boolean> {
+  const practice = await db().practices.get(practiceId);
+  if (!practice) return false;
+  const i = practice.roundIds.indexOf(roundId);
+  if (i === -1 || i === practice.roundIds.length - 1) return false;
+
+  const nextId = practice.roundIds[i + 1]!;
+  const [a, b] = await Promise.all([
+    db().rounds.get(roundId),
+    db().rounds.get(nextId),
+  ]);
+  if (!a || !b) return false;
+
+  const takes = await db().takes.where("roundId").anyOf([roundId, nextId]).toArray();
+
+  await db().transaction("rw", db().practices, db().rounds, db().takes, async () => {
+    await db().rounds.update(roundId, {
+      startSec: Math.min(a.startSec, b.startSec),
+      endSec: Math.max(a.endSec, b.endSec),
+      text: `${a.text} ${b.text}`.trim(),
+      // El audio generado ya no vale: el texto ha cambiado.
+      modelAudioRef: undefined,
+      analysisRef: undefined,
+    });
+    await db().rounds.delete(nextId);
+    await db().takes.bulkDelete(takes.map((t) => t.id));
+    await db().practices.update(practiceId, {
+      roundIds: practice.roundIds.filter((r) => r !== nextId),
+    });
+  });
+
+  for (const t of takes) if (t.audioRef) await deleteBlob(t.audioRef);
+  if (a.analysisRef) await deleteBlob(a.analysisRef);
+  if (b.analysisRef) await deleteBlob(b.analysisRef);
+  return true;
+}
+
+/**
+ * Parte una ronda por la palabra indicada. El tiempo se reparte en
+ * proporción a la longitud de cada mitad, que es el mismo criterio que usa
+ * el karaoke para repartir palabras (`src/lib/text/wordTiming.ts`).
+ */
+export async function splitRound(
+  practiceId: string,
+  roundId: string,
+  atWordIndex: number,
+): Promise<boolean> {
+  const practice = await db().practices.get(practiceId);
+  const round = await db().rounds.get(roundId);
+  if (!practice || !round) return false;
+
+  const words = round.text.split(/\s+/).filter(Boolean);
+  if (atWordIndex <= 0 || atWordIndex >= words.length) return false;
+
+  const firstText = words.slice(0, atWordIndex).join(" ");
+  const secondText = words.slice(atWordIndex).join(" ");
+  const total = firstText.length + secondText.length || 1;
+  const span = round.endSec - round.startSec;
+  const cut = round.startSec + (span * firstText.length) / total;
+
+  const takes = await db().takes.where("roundId").equals(roundId).toArray();
+  const second: Round = {
+    id: uid("r"),
+    clipId: round.clipId,
+    index: round.index + 1,
+    startSec: cut,
+    endSec: round.endSec,
+    text: secondText,
+    ttsProvider: round.ttsProvider,
+    ttsVoice: round.ttsVoice,
+    ttsStyle: round.ttsStyle,
+  };
+
+  const i = practice.roundIds.indexOf(roundId);
+  const nextIds = [...practice.roundIds];
+  nextIds.splice(i + 1, 0, second.id);
+
+  await db().transaction("rw", db().practices, db().rounds, db().takes, async () => {
+    await db().rounds.update(roundId, {
+      endSec: cut,
+      text: firstText,
+      modelAudioRef: undefined,
+      analysisRef: undefined,
+    });
+    await db().rounds.put(second);
+    await db().takes.bulkDelete(takes.map((t) => t.id));
+    await db().practices.update(practiceId, { roundIds: nextIds });
+  });
+
+  for (const t of takes) if (t.audioRef) await deleteBlob(t.audioRef);
+  if (round.analysisRef) await deleteBlob(round.analysisRef);
+  return true;
+}
+
 /** Quita una ronda de la práctica y borra sus tomas y audios. */
 export async function deleteRoundCascade(
   practiceId: string,

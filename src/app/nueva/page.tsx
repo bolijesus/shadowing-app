@@ -32,7 +32,8 @@ import {
   createRounds,
   createTranscript,
 } from "@/lib/db/repositories";
-import type { Cue, Source } from "@/lib/types";
+import type { Cue, PracticeMode, Source } from "@/lib/types";
+import { builtModes, modeMeta } from "@/lib/practice/modes";
 import { mediaFileCache } from "@/lib/media/fileCache";
 import { fmtBytes, fmtClock, uid } from "@/lib/util";
 import { TextSourceStep } from "@/components/nueva/TextSourceStep";
@@ -79,6 +80,7 @@ export default function NuevaPracticaPage() {
     "fade",
   );
   const [phrasesPerRound, setPhrasesPerRound] = React.useState(1);
+  const [mode, setMode] = React.useState<PracticeMode>("shadowing-echo");
 
   const previewRef = React.useRef<HTMLMediaElement | null>(null);
   const previewUrlRef = React.useRef<string | null>(null);
@@ -307,7 +309,7 @@ export default function NuevaPracticaPage() {
       const practice = await createPractice({
         title: title || "Práctica",
         clipId: clip.id,
-        mode: "shadowing-echo",
+        mode,
         roundIds: rounds.map((r) => r.id),
         showText,
       });
@@ -694,13 +696,18 @@ export default function NuevaPracticaPage() {
           </ol>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Actividad">
+            <Field
+              label="Actividad"
+              hint={modeMeta(mode)?.summary}
+            >
               <SelectField
                 aria-label="Actividad"
-                value="shadowing-echo"
-                onValueChange={() => {}}
-                disabled
-                options={[{ value: "shadowing-echo", label: "Shadowing · Eco" }]}
+                value={mode}
+                onValueChange={(v) => setMode(v as PracticeMode)}
+                options={builtModes().map((m) => ({
+                  value: m.id,
+                  label: m.label,
+                }))}
               />
             </Field>
             <Field

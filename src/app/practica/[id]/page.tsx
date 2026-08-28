@@ -38,6 +38,8 @@ import { scoreRound, contourForDisplay } from "@/lib/scoring/scoreRound";
 import { buildAdvice } from "@/lib/scoring/advice";
 import { WaveformPanel } from "@/components/waveform/WaveformPanel";
 import { ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
+import { CurveDuel } from "@/components/games/CurveDuel";
+import { ContourCompare } from "@/components/waveform/ContourCompare";
 import {
   FileTooLargeToDecode,
   SLOW_DECODE_BYTES,
@@ -126,6 +128,10 @@ export default function PracticePlayerPage() {
   const [recPct, setRecPct] = React.useState(0);
   const [loop, setLoop] = React.useState(false);
   const loopRef = React.useRef(false);
+  /** Repeticiones del bucle A–B: 3, 5, 10 o sin fin (§7). */
+  const [loopTimes, setLoopTimes] = React.useState<number>(3);
+  const loopTimesRef = React.useRef(3);
+  const [loopsLeft, setLoopsLeft] = React.useState(0);
   const [textHidden, setTextHidden] = React.useState(false);
   const [takes, setTakes] = React.useState<Record<string, { url: string; blob: Blob; mime: string; dur: number }>>(
     {},
@@ -133,6 +139,7 @@ export default function PracticePlayerPage() {
   const [youAnalysis, setYouAnalysis] = React.useState<Analysis | null>(null);
   const [modelAnalysis, setModelAnalysis] = React.useState<Analysis | null>(null);
   const modelAnalysisRef = React.useRef<Analysis | null>(null);
+  const duelRef = React.useRef(false);
   const [showIntonation, setShowIntonation] = React.useState(true);
   const [showIpa, setShowIpa] = React.useState(false);
   const [scoring, setScoring] = React.useState(false);
@@ -298,7 +305,8 @@ export default function PracticePlayerPage() {
     // rango de la ronda aquí, o se quedaría con [0, 0] y se pausaría solo.
     const [rs, re] = desiredRangeRef.current;
     rp.setRange(rs, re);
-    rp.setLoop(loopRef.current);
+    rp.setLoop(loopRef.current, loopTimesRef.current);
+    rp.onLoop((left) => setLoopsLeft(left));
     playerRef.current = rp;
 
     let raf = 0;
@@ -366,6 +374,8 @@ export default function PracticePlayerPage() {
   /* --- rango del RangePlayer para la ronda actual --- */
   React.useEffect(() => {
     loopRef.current = loop;
+    loopTimesRef.current = loopTimes;
+    setLoopsLeft(loop ? loopTimes : 0);
     if (!round) return;
     desiredRangeRef.current = isTts
       ? [0, Number.MAX_SAFE_INTEGER]
@@ -377,12 +387,12 @@ export default function PracticePlayerPage() {
       : [round.startSec, round.endSec];
     desiredRangeRef.current = range;
     playerRef.current.setRange(range[0], range[1]);
-    playerRef.current.setLoop(loop);
+    playerRef.current.setLoop(loop, loopTimes);
     setPhase("listen");
     setRecPct(0);
     setYouAnalysis(null);
     setRoundScore(null);
-  }, [round, loop, isTts]);
+  }, [round, loop, loopTimes, isTts]);
 
   /* --- análisis del modelo de la ronda (F0 + energía), cacheado --- */
   React.useEffect(() => {
@@ -557,6 +567,8 @@ export default function PracticePlayerPage() {
           model: modelA,
           take: takeAnalysis,
           weights: useSettings.getState().scoreWeights,
+          // El Duelo de curvas puntúa solo la entonación (§7.E).
+          only: duelRef.current ? ["intonation"] : undefined,
         });
         setRoundScore({ ...sc, tip: buildAdvice(sc) });
       }
@@ -660,6 +672,11 @@ export default function PracticePlayerPage() {
   if (practice === null || !practice) {
     return <CenterNote>Esta práctica ya no existe.</CenterNote>;
   }
+
+  // Hasta ahora `practice.mode` no se leía nunca: todas las prácticas se
+  // comportaban como Shadowing Eco. Aquí empieza a ramificar de verdad.
+  const isCurveDuel = practice.mode === "curve-duel";
+  duelRef.current = isCurveDuel;
 
   const showTextMode = practice.showText;
   // Escalera de texto (§7.A): la vuelta 1 muestra el texto entero, la 2 al
@@ -824,7 +841,7 @@ export default function PracticePlayerPage() {
 
         {/* El vídeo se mantiene visible al grabar: en shadowing ayuda a
             seguir la boca y el gesto del hablante. */}
-        {showsVideo && (
+        {showsVideo && !isCurveDuel && (
           <video
             ref={videoRef}
             playsInline
@@ -833,7 +850,7 @@ export default function PracticePlayerPage() {
           />
         )}
 
-        <div className="space-y-3" hidden={isYouTube}>
+        <div className="space-y-3" hidden={isYouTube || isCurveDuel}>
           <WaveformPanel
             label="Modelo"
             peaks={roundPeaks}
@@ -894,10 +911,37 @@ export default function PracticePlayerPage() {
 
         <div className="mt-auto space-y-3">
           {phase === "countdown" && (
-            <Countdown onDone={() => void beginRecording()} />
+            <Countdown
+              label={
+                isCurveDuel ? "Sigue la forma de la curva" : "Sigue al modelo"
+              }
+              onDone={() => void beginRecording()}
+            />
           )}
 
-          {phase === "listen" && (
+          {isCurveDuel && phase !== "countdown" && (
+            <CurveDuel
+              modelAnalysis={modelAnalysis}
+              takeAnalysis={youAnalysis}
+              phase={
+                phase === "recording"
+                  ? "recording"
+                  : phase === "compare"
+                    ? "result"
+                    : "study"
+              }
+              scoring={scoring}
+              recPct={recPct}
+              isLast={idx + 1 >= total}
+              onRecord={startCountdown}
+              onStop={() => void stopRecording()}
+              onRetry={startCountdown}
+              onNext={() => void saveAndContinue()}
+              onRevealAudio={() => playModel(true)}
+            />
+          )}
+
+          {!isCurveDuel && phase === "listen" && (
             <>
               <div className="grid grid-cols-2 gap-2">
                 <Button
@@ -908,12 +952,38 @@ export default function PracticePlayerPage() {
                   {playing ? "Pausar" : "Escuchar modelo"}
                 </Button>
                 <Button
-                  variant="outline"
+                  variant={loop ? "default" : "outline"}
                   onClick={() => setLoop((v) => !v)}
                   aria-pressed={loop}
                 >
-                  {loop ? "Bucle: activado" : "Bucle A–B"}
+                  {loop
+                    ? loopsLeft === Infinity
+                      ? "Bucle ∞"
+                      : `Bucle ×${loopsLeft}`
+                    : "Bucle A–B"}
                 </Button>
+                {loop && (
+                  <div
+                    className="col-span-2 flex flex-wrap items-center gap-1"
+                    role="group"
+                    aria-label="Repeticiones del bucle"
+                  >
+                    <span className="mr-1 text-xs font-bold text-ink-soft">
+                      Repetir
+                    </span>
+                    {[3, 5, 10, Infinity].map((n) => (
+                      <Button
+                        key={String(n)}
+                        size="xs"
+                        variant={loopTimes === n ? "default" : "outline"}
+                        aria-pressed={loopTimes === n}
+                        onClick={() => setLoopTimes(n)}
+                      >
+                        {n === Infinity ? "∞" : `×${n}`}
+                      </Button>
+                    ))}
+                  </div>
+                )}
                 <div className="col-span-2 flex justify-center">
                   <SpeedControl value={rate} onChange={applyRate} />
                 </div>
@@ -943,7 +1013,7 @@ export default function PracticePlayerPage() {
             </>
           )}
 
-          {phase === "recording" && (
+          {!isCurveDuel && phase === "recording" && (
             <Button
               variant="record"
              
@@ -954,7 +1024,7 @@ export default function PracticePlayerPage() {
             </Button>
           )}
 
-          {phase === "compare" && (
+          {!isCurveDuel && phase === "compare" && (
             <div className="space-y-4 rounded-xl border-2 border-line bg-surface p-4">
               <p className="text-sm text-ink-soft">
                 Compara el modelo con tu toma. Guárdala cuando quieras pasar a
@@ -966,6 +1036,16 @@ export default function PracticePlayerPage() {
                   Analizando tu voz…
                 </p>
               )}
+              {/* Las dos curvas superpuestas: en paneles separados hay que
+                  compararlas de memoria y no se ve DÓNDE te separas. */}
+              {!scoring && youAnalysis && modelContour && showIntonation && (
+                <ContourCompare
+                  model={modelContour}
+                  take={youContour}
+                  height={140}
+                />
+              )}
+
               {!scoring && roundScore && (
                 <div className="space-y-2">
                   <Eyebrow>Coincidencia · ronda {idx + 1}</Eyebrow>

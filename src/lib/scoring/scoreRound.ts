@@ -89,6 +89,12 @@ export interface ScoreArgs {
   model: Analysis | null;
   take: Analysis;
   weights?: Partial<Record<ComponentKey, number>>;
+  /**
+   * Limita la nota a estos componentes. El Duelo de curvas (§7.E) puntúa
+   * solo la entonación: pesar ahí la duración o el ritmo mediría algo que
+   * el ejercicio ni siquiera pide.
+   */
+  only?: ComponentKey[];
   /** Presentes solo cuando hay ASR (fase de IA). */
   asrText?: string;
   referenceText?: string;
@@ -124,10 +130,10 @@ export function scoreRound(args: ScoreArgs): RoundScore {
       const ratio = Math.min(1, rangeTakeSt / rangeModelSt);
       intonation = Math.round(intonation * (0.45 + 0.55 * ratio));
     }
-    if (into.coverage < 0.25) {
-      // Casi no hay voz que comparar: no es una nota fiable.
-      delete components.rhythmShape;
-    } else {
+    // Poca cobertura = casi no hay tramos con voz en ambos a la vez, así que
+    // la entonación no es comparable y se omite (§13.9). `rhythmShape` sí se
+    // mantiene: sale de la envolvente de energía, que no depende del tono.
+    if (into.coverage >= 0.25) {
       components.intonation = intonation;
     }
 
@@ -145,6 +151,14 @@ export function scoreRound(args: ScoreArgs): RoundScore {
   // `words` solo existe cuando hay ASR de verdad (fase de IA).
   if (args.asrText !== undefined && args.referenceText) {
     components.words = wordsScore(args.asrText, args.referenceText);
+  }
+
+  // Si el modo solo mide ciertos componentes, los demás se descartan antes
+  // de renormalizar: no se ocultan, es que no forman parte del ejercicio.
+  if (args.only) {
+    for (const k of Object.keys(components) as ComponentKey[]) {
+      if (!args.only.includes(k)) delete components[k];
+    }
   }
 
   const weights = { ...DEFAULT_WEIGHTS, ...args.weights };

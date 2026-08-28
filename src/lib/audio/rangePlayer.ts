@@ -9,6 +9,9 @@ export class RangePlayer {
   private start = 0;
   private end = 0;
   private loop = false;
+  /** Repeticiones que quedan. Infinity = sin límite. */
+  private loopsLeft = Infinity;
+  private onLoopCb: ((left: number) => void) | null = null;
   private onEndCb: (() => void) | null = null;
 
   /**
@@ -26,7 +29,10 @@ export class RangePlayer {
   private tick = () => {
     if (this.limit <= this.start) return; // rango aún sin fijar
     if (this.el.currentTime >= this.limit - 0.02) {
-      if (this.loop) {
+      if (this.loop && this.loopsLeft > 1) {
+        // §7: el bucle A–B repite N veces, no eternamente.
+        if (Number.isFinite(this.loopsLeft)) this.loopsLeft -= 1;
+        this.onLoopCb?.(this.loopsLeft);
         this.el.currentTime = this.start;
       } else {
         this.el.pause();
@@ -53,8 +59,19 @@ export class RangePlayer {
     }
   }
 
-  setLoop(v: boolean) {
+  /** `times` = Infinity para bucle sin fin. */
+  setLoop(v: boolean, times: number = Infinity) {
     this.loop = v;
+    this.loopsLeft = v ? times : Infinity;
+  }
+
+  /** Repeticiones restantes, para poder mostrarlas. */
+  get loopsRemaining(): number {
+    return this.loop ? this.loopsLeft : 0;
+  }
+
+  onLoop(cb: (left: number) => void) {
+    this.onLoopCb = cb;
   }
 
   set playbackRate(r: number) {

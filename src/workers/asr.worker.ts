@@ -43,11 +43,17 @@ async function webGpuUsable(): Promise<boolean> {
   }
 }
 
+function describeDevice(): string {
+  if (!loadedDtype) return loadedDevice;
+  return `${loadedDevice}/${loadedDtype}${loadedOptimized ? "" : "/sin-optimizar"}`;
+}
+
 let pipe: Pipe | null = null;
 let loadedModel = "";
 let loadedDevice: "webgpu" | "wasm" = "wasm";
 type Dtype = "fp32" | "fp16" | "q8" | "int8" | "uint8" | "q4" | "bnb4";
 let loadedDtype: Dtype | "" = "";
+let loadedOptimized = true;
 
 async function ensurePipeline(
   model: string,
@@ -67,12 +73,21 @@ async function ensurePipeline(
     env.backends.onnx.wasm.wasmPaths = `${self.location.origin}/ort/`;
   }
 
-  const build = async (device: "webgpu" | "wasm", dtype: Dtype) =>
+  const build = async (
+    device: "webgpu" | "wasm",
+    dtype: Dtype,
+    optimize: boolean,
+  ) =>
     (await pipeline("automatic-speech-recognition", model, {
       device,
       dtype,
+      // El fallo "TransposeDQWeightsForMatMulNBits / Missing required scale"
+      // ocurre DENTRO del optimizador de grafos de onnxruntime
+      // (qdq_actions.cc), no al ejecutar el modelo. Desactivarlo evita ese
+      // paso; el modelo corre igual, algo más lento.
+      session_options: optimize ? undefined : { graphOptimizationLevel: "disabled" },
       progress_callback: onProgress as never,
-    })) as unknown as Pipe;
+    } as never)) as unknown as Pipe;
 
   // No basta con que exista navigator.gpu: puede estar el API y no haber
   // adaptador (GPU sin soporte, driver bloqueado, máquina virtual). Hay que
@@ -82,43 +97,47 @@ async function ensurePipeline(
   /**
    * Escalera de configuraciones, de la más ligera a la más compatible.
    *
-   * Las variantes cuantizadas pesan mucho menos, pero algunas combinaciones
-   * de onnxruntime y modelo fallan al crear la sesión ("Missing required
-   * scale ... MatMulNBits"). En vez de fijar una y confiar en que funcione en
-   * todas las máquinas, se prueban por orden y se usa la primera que arranca.
-   * fp32 va al final: es la que siempre funciona y la que más pesa.
+   * Se combinan tres ejes: dispositivo, cuantización y optimización de
+   * grafos. Este último importa: hay versiones de onnxruntime que revientan
+   * al optimizar ciertos modelos, y ahí falla igual con o sin cuantizar, así
+   * que probar solo dtypes no bastaba.
    */
-  const ladder: { device: "webgpu" | "wasm"; dtype: Dtype }[] = [
+  const ladder: {
+    device: "webgpu" | "wasm";
+    dtype: Dtype;
+    optimize: boolean;
+  }[] = [
     ...(gpu
       ? [
-          { device: "webgpu" as const, dtype: "fp32" as Dtype },
-          { device: "webgpu" as const, dtype: "q4" as Dtype },
+          { device: "webgpu" as const, dtype: "fp32" as Dtype, optimize: true },
+          { device: "webgpu" as const, dtype: "fp32" as Dtype, optimize: false },
         ]
       : []),
-    { device: "wasm" as const, dtype: "q8" as Dtype },
-    { device: "wasm" as const, dtype: "int8" as Dtype },
-    { device: "wasm" as const, dtype: "fp32" as Dtype },
+    { device: "wasm" as const, dtype: "q8" as Dtype, optimize: true },
+    { device: "wasm" as const, dtype: "q8" as Dtype, optimize: false },
+    { device: "wasm" as const, dtype: "fp32" as Dtype, optimize: false },
+    { device: "wasm" as const, dtype: "int8" as Dtype, optimize: false },
   ];
 
   const failures: string[] = [];
   for (const step of ladder) {
     try {
-      pipe = await build(step.device, step.dtype);
+      pipe = await build(step.device, step.dtype, step.optimize);
       loadedDevice = step.device;
       loadedDtype = step.dtype;
+      loadedOptimized = step.optimize;
       break;
     } catch (e) {
+      const msg = (e instanceof Error ? e.message : String(e)).split("\n")[0] ?? "";
       failures.push(
-        `${step.device}/${step.dtype}: ${
-          e instanceof Error ? e.message.split("\n")[0] : String(e)
-        }`,
+        `${step.device}/${step.dtype}${step.optimize ? "" : "/sin-optimizar"}: ${msg.slice(0, 120)}`,
       );
     }
   }
 
   if (!pipe) {
     throw new Error(
-      `Ninguna configuración arrancó en este navegador.\n${failures.join("\n")}`,
+      `Ninguna configuración arrancó.\n${failures.join("\n")}`,
     );
   }
 
@@ -130,11 +149,11 @@ const api = {
   /** Descarga y compila el modelo, informando del progreso. */
   async warmup(model: string, onProgress?: ProgressCb): Promise<string> {
     await ensurePipeline(model, onProgress ? Comlink.proxy(onProgress) : undefined);
-    return loadedDtype ? `${loadedDevice}/${loadedDtype}` : loadedDevice;
+    return describeDevice();
   },
 
   device(): string {
-    return loadedDtype ? `${loadedDevice}/${loadedDtype}` : loadedDevice;
+    return describeDevice();
   },
 
   /**

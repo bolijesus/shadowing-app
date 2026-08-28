@@ -66,29 +66,41 @@ export class AsrError extends Error {
  */
 export const WHISPER_MODELS = [
   {
-    id: "onnx-community/whisper-tiny.en",
-    label: "Whisper tiny · solo inglés",
+    id: "Xenova/whisper-tiny.en",
+    label: "Whisper tiny · solo inglés · export clásico",
     mb: 42,
     mbFull: 150,
     englishOnly: true,
   },
   {
+    id: "Xenova/whisper-tiny",
+    label: "Whisper tiny · multilingüe · export clásico",
+    mb: 45,
+    mbFull: 155,
+    englishOnly: false,
+  },
+  {
     id: "onnx-community/whisper-tiny",
-    label: "Whisper tiny · multilingüe",
+    label: "Whisper tiny · multilingüe · export nuevo",
     mb: 45,
     mbFull: 155,
     englishOnly: false,
   },
   {
     id: "onnx-community/whisper-base",
-    label: "Whisper base · multilingüe, más preciso",
+    label: "Whisper base · más preciso, más pesado",
     mb: 82,
     mbFull: 290,
     englishOnly: false,
   },
 ] as const;
 
-export const DEFAULT_WHISPER = "onnx-community/whisper-tiny";
+/**
+ * Por defecto el export clásico de Xenova: es el más probado en navegador.
+ * Los de onnx-community traen nodos QDQ que algunas versiones de onnxruntime
+ * no saben optimizar y hacen fallar la creación de la sesión.
+ */
+export const DEFAULT_WHISPER = "Xenova/whisper-tiny";
 
 export function whisperModelInfo(id: string) {
   return WHISPER_MODELS.find((m) => m.id === id);

@@ -118,10 +118,12 @@ export async function transcribe(
         opts.onProgress ? Comlink.proxy(opts.onProgress) : undefined,
       );
     } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
       throw new AsrError(
-        e instanceof Error
-          ? `Whisper local: ${e.message}`
-          : "Whisper local falló.",
+        `Whisper local no arrancó en este navegador.\n\n${detail}\n\n` +
+          "Puedes probar otro modelo en Ajustes → Motores locales (el export " +
+          "clásico de Xenova suele funcionar donde el nuevo falla), o cambiar " +
+          "a un proveedor con API en Ajustes → Reconocimiento de voz.",
       );
     }
   }

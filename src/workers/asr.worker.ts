@@ -96,22 +96,6 @@ async function ensurePipeline(
   return pipe;
 }
 
-/** Whisper trabaja a 16 kHz mono. */
-async function toMono16k(bytes: ArrayBuffer): Promise<Float32Array> {
-  const OfflineCtor =
-    (self as unknown as { OfflineAudioContext: typeof OfflineAudioContext })
-      .OfflineAudioContext;
-  const ctx = new OfflineCtor(1, 1, 16000);
-  const buf = await ctx.decodeAudioData(bytes);
-  if (buf.numberOfChannels === 1) return buf.getChannelData(0).slice();
-  const out = new Float32Array(buf.length);
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-    const d = buf.getChannelData(ch);
-    for (let i = 0; i < buf.length; i++) out[i]! += d[i]! / buf.numberOfChannels;
-  }
-  return out;
-}
-
 const api = {
   /** Descarga y compila el modelo, informando del progreso. */
   async warmup(model: string, onProgress?: ProgressCb): Promise<string> {
@@ -123,14 +107,20 @@ const api = {
     return loadedDevice;
   },
 
+  /**
+   * `pcm` llega ya como mono a 16 kHz. La conversión se hace en el hilo
+   * principal a propósito: Web Audio (AudioContext / OfflineAudioContext)
+   * solo está expuesto en Window, no en workers, así que decodificar aquí
+   * fallaba con "Ctor is not a constructor".
+   */
   async transcribe(
-    bytes: ArrayBuffer,
+    pcm: Float32Array,
     language: string,
     model: string,
     onProgress?: ProgressCb,
   ): Promise<AsrResult> {
     const p = await ensurePipeline(model, onProgress);
-    const audio = await toMono16k(bytes);
+    const audio = pcm;
 
     const base = language.split("-")[0]!.toLowerCase();
     const englishOnly = model.endsWith(".en");

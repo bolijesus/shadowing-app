@@ -16,7 +16,7 @@ import {
   serializePeaks,
   type Peaks,
 } from "./peaks";
-import { FileTooLargeToDecode, MAX_DECODE_BYTES } from "./decode";
+import { decodeRange, FileTooLargeToDecode, MAX_DECODE_BYTES } from "./decode";
 import { captureRangeAudio, type CaptureProgress } from "./captureFallback";
 
 /**
@@ -69,14 +69,16 @@ export async function ensureClipLoaded(
   if (file.size > MAX_DECODE_BYTES) throw new FileTooLargeToDecode(file.size);
 
   loading = (async () => {
+    // La decodificación va aquí, en el hilo principal, porque Web Audio solo
+    // existe en Window: OfflineAudioContext no está disponible en un worker.
+    // Lo que sí se evita es repetirla: se hace UNA vez por recorte y al
+    // worker solo viajan las muestras resultantes, que son pocos MB.
+    let pcm: Float32Array;
+    let sampleRate: number;
     try {
-      const bytes = await file.arrayBuffer();
-      await dsp().loadRange(
-        Comlink.transfer(bytes, [bytes]) as unknown as ArrayBuffer,
-        startSec,
-        endSec,
-        token,
-      );
+      const d = await decodeRange(file, startSec, endSec);
+      pcm = d.pcm;
+      sampleRate = d.sampleRate;
     } catch (e) {
       // Hay códecs que el navegador reproduce pero decodeAudioData no sabe
       // decodificar (AC-3, algunos AAC, MKV). Antes de rendirse se captura
@@ -89,15 +91,18 @@ export async function ensureClipLoaded(
         endSec,
         onCaptureProgress,
       );
-      const bytes = await captured.arrayBuffer();
       // Lo capturado ya empieza en 0: el rango se aplicó al grabarlo.
-      await dsp().loadRange(
-        Comlink.transfer(bytes, [bytes]) as unknown as ArrayBuffer,
-        0,
-        Number.MAX_SAFE_INTEGER,
-        token,
-      );
+      const d = await decodeRange(captured, 0, Number.MAX_SAFE_INTEGER);
+      pcm = d.pcm;
+      sampleRate = d.sampleRate;
     }
+
+    const t = pcm.slice(0);
+    await dsp().loadPcm(
+      Comlink.transfer(t, [t.buffer]) as unknown as Float32Array,
+      sampleRate,
+      token,
+    );
     loadedToken = token;
     return token;
   })();
@@ -192,10 +197,17 @@ export async function extractRange(
   return new Blob([wav], { type: "audio/wav" });
 }
 
-/** ¿El fallo es "no sé decodificar esto" y no otra cosa? */
+/**
+ * ¿Merece la pena intentar el plan B?
+ *
+ * Se prueba salvo que el problema sea de tamaño, donde capturar tampoco
+ * ayudaría. Los mensajes de decodificación varían mucho entre navegadores
+ * ("Unable to decode audio data", "EncodingError", "The buffer passed to
+ * decodeAudioData contains an unknown content type"), así que filtrar por
+ * texto dejaba fuera casos reales.
+ */
 function looksLikeDecodeFailure(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : String(e);
-  return /decode|EncodingError|unsupported|no se pudo|unable/i.test(msg);
+  return !(e instanceof FileTooLargeToDecode);
 }
 
 /** Libera el PCM del worker al salir de la práctica. */

@@ -15,8 +15,6 @@ import { computeEnergy, detectPauses } from "@/lib/dsp/energy";
 let cached: { token: string; pcm: Float32Array; sampleRate: number } | null =
   null;
 
-const ANALYSIS_SAMPLE_RATE = 16000;
-
 /**
  * Pool DSP: picos de onda, F0 y envolvente de energía.
  * Todo el análisis pesado vive aquí; el hilo de UI nunca se bloquea.
@@ -80,50 +78,20 @@ const api = {
   },
 
   /**
-   * Decodifica un rango y lo deja en memoria bajo `token`. Los bytes llegan
-   * como transferible, así que no se copian.
+   * Recibe el PCM ya decodificado y lo guarda para todas las rondas.
+   *
+   * La decodificación NO puede hacerse aquí: Web Audio (AudioContext y
+   * OfflineAudioContext) solo está expuesto en Window, no en workers. Se
+   * decodifica una vez en el hilo principal y lo que llega aquí son las
+   * muestras del recorte —unos pocos MB— como transferible, sin copia.
    */
-  async loadRange(
-    bytes: ArrayBuffer,
-    startSec: number,
-    endSec: number,
+  loadPcm(
+    pcm: Float32Array,
+    sampleRate: number,
     token: string,
-  ): Promise<{ durationSec: number; sampleRate: number }> {
-    if (cached?.token === token) {
-      return {
-        durationSec: cached.pcm.length / cached.sampleRate,
-        sampleRate: cached.sampleRate,
-      };
-    }
-
-    const Ctor = (self as unknown as {
-      OfflineAudioContext: typeof OfflineAudioContext;
-    }).OfflineAudioContext;
-
-    // El contexto se crea antes de decodificar: si el navegador rechazara los
-    // 16 kHz lo hace aquí, y decodeAudioData desacopla el buffer, así que no
-    // habría forma de reintentar con los mismos bytes.
-    let ctx: OfflineAudioContext;
-    try {
-      ctx = new Ctor(1, 1, ANALYSIS_SAMPLE_RATE);
-    } catch {
-      ctx = new Ctor(1, 1, 44100);
-    }
-
-    const buf = await ctx.decodeAudioData(bytes);
-    const sr = buf.sampleRate;
-    const from = Math.max(0, Math.floor(startSec * sr));
-    const to = Math.min(buf.length, Math.ceil(endSec * sr));
-    const len = Math.max(0, to - from);
-
-    const pcm = new Float32Array(len);
-    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-      const d = buf.getChannelData(ch);
-      for (let i = 0; i < len; i++) pcm[i]! += d[from + i]! / buf.numberOfChannels;
-    }
-
-    cached = { token, pcm, sampleRate: sr };
-    return { durationSec: len / sr, sampleRate: sr };
+  ): { durationSec: number; sampleRate: number } {
+    cached = { token, pcm, sampleRate };
+    return { durationSec: pcm.length / sampleRate, sampleRate };
   },
 
   /** ¿Está ya decodificado este recorte? */

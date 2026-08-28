@@ -94,9 +94,25 @@ export async function transcribe(
 
   if (engine === "whisper-local") {
     try {
-      const bytes = await audio.arrayBuffer();
+      // Se decodifica a 16 kHz mono aquí, no en el worker: Web Audio solo
+      // existe en Window. Al worker solo viajan las muestras.
+      const { decodeRange, ANALYSIS_SAMPLE_RATE } = await import(
+        "@/lib/audio/decode"
+      );
+      const { pcm, sampleRate } = await decodeRange(
+        audio,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      );
+      // Whisper espera 16 kHz exactos. decodeRange los da salvo que el
+      // navegador rechace esa frecuencia y caiga a 44,1: entonces hay que
+      // remuestrear, o el modelo interpreta mal el audio y devuelve basura.
+      const t =
+        sampleRate === ANALYSIS_SAMPLE_RATE
+          ? pcm.slice(0)
+          : resampleTo16k(pcm, sampleRate);
       return await asrWorker().transcribe(
-        Comlink.transfer(bytes, [bytes]),
+        Comlink.transfer(t, [t.buffer]) as unknown as Float32Array,
         language,
         selectedWhisperModel(),
         opts.onProgress ? Comlink.proxy(opts.onProgress) : undefined,
@@ -128,6 +144,20 @@ export async function transcribe(
       model: modelFor(cfg, "asr"),
     },
   );
+}
+
+/** Remuestreo lineal a 16 kHz, solo para el caso raro de arriba. */
+function resampleTo16k(pcm: Float32Array, fromRate: number): Float32Array {
+  const ratio = 16000 / fromRate;
+  const out = new Float32Array(Math.max(1, Math.round(pcm.length * ratio)));
+  for (let i = 0; i < out.length; i++) {
+    const pos = i / ratio;
+    const lo = Math.floor(pos);
+    const hi = Math.min(pcm.length - 1, lo + 1);
+    const f = pos - lo;
+    out[i] = (pcm[lo] ?? 0) * (1 - f) + (pcm[hi] ?? 0) * f;
+  }
+  return out;
 }
 
 export { AsrError };

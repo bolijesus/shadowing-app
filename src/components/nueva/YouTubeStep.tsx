@@ -64,6 +64,8 @@ export function YouTubeStep({
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
+  /** Si el usuario ya movió el rango, cargar subtítulos no debe pisarlo. */
+  const touchedRange = React.useRef(false);
   const hostRef = React.useRef<HTMLDivElement>(null);
   const playerRef = React.useRef<YouTubeRangePlayer | null>(null);
 
@@ -124,10 +126,13 @@ export function YouTubeStep({
       return;
     }
     setCues(got);
-    setRange({
-      start: got[0]!.start,
-      end: Math.min(got[got.length - 1]!.end, got[0]!.start + 60),
-    });
+    // El rango elegido no se pisa: solo se propone ajustarlo (botón abajo).
+    if (!touchedRange.current) {
+      setRange({
+        start: got[0]!.start,
+        end: Math.min(got[got.length - 1]!.end, got[0]!.start + 60),
+      });
+    }
   }
 
   async function onSubsFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -140,10 +145,12 @@ export function YouTubeStep({
     }
     setError(null);
     setCues(parsed);
-    setRange({
-      start: parsed[0]!.start,
-      end: Math.min(parsed[parsed.length - 1]!.end, parsed[0]!.start + 60),
-    });
+    if (!touchedRange.current) {
+      setRange({
+        start: parsed[0]!.start,
+        end: Math.min(parsed[parsed.length - 1]!.end, parsed[0]!.start + 60),
+      });
+    }
   }
 
   function applyManual() {
@@ -259,7 +266,10 @@ export function YouTubeStep({
               duration={duration || Math.max(range.end, 60)}
               start={range.start}
               end={range.end}
-              onChange={(s, e) => setRange({ start: s, end: e })}
+              onChange={(s, e) => {
+                touchedRange.current = true;
+                setRange({ start: s, end: e });
+              }}
               onPreview={() => playerRef.current?.play(true)}
             />
           </Card>
@@ -315,7 +325,29 @@ export function YouTubeStep({
             </Button>
 
             {cues.length > 0 && (
-              <Pill tone="ok">{cues.length} líneas listas</Pill>
+              <div className="flex flex-wrap items-center gap-2">
+                <Pill tone="ok">
+                  {
+                    cues.filter(
+                      (c) => c.end > range.start && c.start < range.end,
+                    ).length
+                  }{" "}
+                  de {cues.length} líneas en el tramo elegido
+                </Pill>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    touchedRange.current = true;
+                    setRange({
+                      start: cues[0]!.start,
+                      end: cues[cues.length - 1]!.end,
+                    });
+                  }}
+                >
+                  Ajustar el rango a los subtítulos
+                </Button>
+              </div>
             )}
           </Card>
 

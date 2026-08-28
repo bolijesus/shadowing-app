@@ -228,10 +228,19 @@ export default function NuevaPracticaPage() {
     }
     setError(null);
     setCues(parsed);
-    setRange({
-      start: parsed[0]!.start,
-      end: Math.min(duration || parsed[parsed.length - 1]!.end, parsed[0]!.start + 60),
-    });
+
+    // El rango NO se toca: ya lo eligió el usuario en el paso anterior.
+    // Antes se sobrescribía con el del primer subtítulo, lo que tenía
+    // sentido cuando los subtítulos iban primero; con el orden actual
+    // borraba el tramo recién seleccionado y todo volvía al inicio.
+    const dentro = parsed.filter(
+      (c) => c.end > range.start && c.start < range.end,
+    );
+    if (dentro.length === 0) {
+      setError(
+        `Los subtítulos no cubren el tramo elegido (${fmtClock(range.start)}–${fmtClock(range.end)}). Cambia el rango o usa el botón de abajo para ajustarlo a los subtítulos.`,
+      );
+    }
   }
 
   /**
@@ -557,9 +566,30 @@ export default function NuevaPracticaPage() {
               />
             </Field>
             {cues.length > 0 && (
-              <p className="text-sm text-ok">
-                {cues.length} líneas reconocidas.
-              </p>
+              <div className="space-y-2">
+                <p className="text-sm text-ok">
+                  {cues.length} líneas reconocidas.{" "}
+                  {
+                    cues.filter(
+                      (c) => c.end > range.start && c.start < range.end,
+                    ).length
+                  }{" "}
+                  dentro del tramo elegido ({fmtClock(range.start)}–
+                  {fmtClock(range.end)}).
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setRange({
+                      start: cues[0]!.start,
+                      end: cues[cues.length - 1]!.end,
+                    })
+                  }
+                >
+                  Ajustar el rango a estos subtítulos
+                </Button>
+              </div>
             )}
           </Card>
 
@@ -681,19 +711,7 @@ export default function NuevaPracticaPage() {
             }}
           />
 
-          {cues.length > 0 && (
-            <Button
-              variant="outline"
-              onClick={() =>
-                setRange({
-                  start: cues[0]!.start,
-                  end: cues[cues.length - 1]!.end,
-                })
-              }
-            >
-              Usar el rango de todos los subtítulos
-            </Button>
-          )}
+
 
           <div className="flex justify-between">
             <Button variant="ghost" onClick={() => setStep("file")}>

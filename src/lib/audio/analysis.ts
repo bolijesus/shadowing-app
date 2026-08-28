@@ -176,7 +176,10 @@ export function analysisPath(
   return `analysis/${kind}_${id}${tag}.bin`;
 }
 
-/** Análisis del modelo por ronda, cacheado en OPFS. */
+/**
+ * @deprecated Decodifica el archivo entero en el hilo principal, una vez por
+ * ronda. Usa `roundAnalysis` de `clipAnalysis.ts`.
+ */
 export async function getOrBuildRoundAnalysis(
   roundId: string,
   file: Blob,

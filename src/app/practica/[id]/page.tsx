@@ -27,10 +27,9 @@ import {
 import { ensureAudioContext } from "@/lib/audio/context";
 import { resolveMediaSource, requestHandlePermission } from "@/lib/media/source";
 import { mediaFileCache } from "@/lib/media/fileCache";
-import { getOrBuildPeaks } from "@/lib/audio/peaks";
+import { clipPeaks, roundAnalysis, releaseClip } from "@/lib/audio/clipAnalysis";
 import {
   analyzeTake,
-  getOrBuildRoundAnalysis,
   saveTakeAnalysis,
   type Analysis,
 } from "@/lib/audio/analysis";
@@ -357,12 +356,12 @@ export default function PracticePlayerPage() {
     );
     (async () => {
       try {
-        const p = await getOrBuildPeaks({
-          clipId: isTts && round ? `${clip.id}_${round.id}` : clip.id,
+        const p = await clipPeaks(
           file,
-          startSec: isTts ? 0 : clip.startSec,
-          endSec: isTts ? Number.MAX_SAFE_INTEGER : clip.endSec,
-        });
+          isTts && round ? `${clip.id}_${round.id}` : clip.id,
+          isTts ? 0 : clip.startSec,
+          isTts ? Number.MAX_SAFE_INTEGER : clip.endSec,
+        );
         if (!cancelled) {
           setPeaks(p);
           setPeaksNote(null);
@@ -422,9 +421,12 @@ export default function PracticePlayerPage() {
     modelAnalysisRef.current = null;
     (async () => {
       try {
-        const a = await getOrBuildRoundAnalysis(
-          round.id,
+        const a = await roundAnalysis(
           file,
+          isTts && round ? `${clip!.id}_${round.id}` : clip!.id,
+          isTts ? 0 : clip!.startSec,
+          isTts ? Number.MAX_SAFE_INTEGER : clip!.endSec,
+          round.id,
           isTts ? 0 : round.startSec,
           isTts ? Number.MAX_SAFE_INTEGER : round.endSec,
         );
@@ -442,7 +444,10 @@ export default function PracticePlayerPage() {
     return () => {
       cancelled = true;
     };
-  }, [file, round, isTts]);
+  }, [file, round, isTts, clip]);
+
+  // Al salir de la práctica se suelta el PCM que el worker tiene en memoria.
+  React.useEffect(() => () => releaseClip(), []);
 
   /* --- primera visita: ¿auriculares? --- */
   React.useEffect(() => {

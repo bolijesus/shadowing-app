@@ -89,7 +89,10 @@ export interface BuildPeaksArgs {
   buckets?: number;
 }
 
-/** Devuelve picos desde OPFS si existen; si no, los calcula y cachea. */
+/**
+ * @deprecated Decodifica en el hilo principal. Usa `clipPeaks` de
+ * `clipAnalysis.ts`, que decodifica una vez dentro del worker (§6).
+ */
 export async function getOrBuildPeaks(args: BuildPeaksArgs): Promise<Peaks> {
   const path = peaksPath(args.clipId, args.startSec, args.endSec);
   if (await blobExists(path)) {

@@ -14,11 +14,8 @@ import { WaveCompare } from "@/components/waveform/WaveCompare";
 import { ContourCompare } from "@/components/waveform/ContourCompare";
 import { BigScore, ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
 import { readAsObjectURL } from "@/lib/storage/opfs";
-import {
-  loadAnalysis,
-  getOrBuildRoundAnalysis,
-  type Analysis,
-} from "@/lib/audio/analysis";
+import { loadAnalysis, type Analysis } from "@/lib/audio/analysis";
+import { roundAnalysis, releaseClip } from "@/lib/audio/clipAnalysis";
 import { contourForDisplay, type RoundScore } from "@/lib/scoring/scoreRound";
 import { resolveMediaSource } from "@/lib/media/source";
 import { mediaFileCache } from "@/lib/media/fileCache";
@@ -69,6 +66,9 @@ export default function ResultsPage() {
   const [showIntonation, setShowIntonation] = React.useState(true);
   const [showIpa, setShowIpa] = React.useState(false);
   const [file, setFile] = React.useState<Blob | null>(null);
+
+  // El worker guarda el PCM del recorte mientras se revisan las rondas.
+  React.useEffect(() => () => releaseClip(), []);
 
   const latestByRound = React.useMemo(() => {
     const m = new Map<string, Take>();
@@ -244,6 +244,9 @@ export default function ResultsPage() {
             round={round}
             take={take}
             file={file}
+            clipId={clip?.id ?? ""}
+            clipStart={clip?.startSec ?? 0}
+            clipEnd={clip?.endSec ?? 0}
             showIntonation={showIntonation}
             onToggleIntonation={() => setShowIntonation((v) => !v)}
           />
@@ -293,12 +296,19 @@ function RoundDetail({
   round,
   take,
   file,
+  clipId,
+  clipStart,
+  clipEnd,
   showIntonation,
   onToggleIntonation,
 }: {
   round: Round;
   take?: Take;
   file: Blob | null;
+  /** Recorte al que pertenece: el análisis se saca de él, decodificado una vez. */
+  clipId: string;
+  clipStart: number;
+  clipEnd: number;
   showIntonation: boolean;
   onToggleIntonation: () => void;
 }) {
@@ -312,13 +322,21 @@ function RoundDetail({
   React.useEffect(() => {
     if (!file) return;
     let cancelled = false;
-    getOrBuildRoundAnalysis(round.id, file, round.startSec, round.endSec)
+    roundAnalysis(
+      file,
+      clipId,
+      clipStart,
+      clipEnd,
+      round.id,
+      round.startSec,
+      round.endSec,
+    )
       .then((a) => !cancelled && setModelA(a))
       .catch(() => !cancelled && setModelA(null));
     return () => {
       cancelled = true;
     };
-  }, [file, round.id, round.startSec, round.endSec]);
+  }, [file, clipId, clipStart, clipEnd, round.id, round.startSec, round.endSec]);
 
   React.useEffect(() => {
     let cancelled = false;

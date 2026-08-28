@@ -4,6 +4,20 @@ import { computeF0 } from "@/lib/dsp/f0";
 import { computeEnergy, detectPauses } from "@/lib/dsp/energy";
 
 /**
+ * PCM decodificado del recorte en curso.
+ *
+ * Antes cada análisis volvía a leer y decodificar el archivo ENTERO, y encima
+ * en el hilo principal: con un capítulo de 22 minutos y cinco rondas eran seis
+ * decodificaciones completas y el navegador se quedaba colgado. Ahora se
+ * decodifica una vez aquí, se guarda el trozo del recorte —que son unos pocos
+ * MB— y cada ronda sale de ese buffer.
+ */
+let cached: { token: string; pcm: Float32Array; sampleRate: number } | null =
+  null;
+
+const ANALYSIS_SAMPLE_RATE = 16000;
+
+/**
  * Pool DSP: picos de onda, F0 y envolvente de energía.
  * Todo el análisis pesado vive aquí; el hilo de UI nunca se bloquea.
  */
@@ -63,6 +77,86 @@ function peaksFrom(
 const api = {
   computePeaks(pcm: Float32Array, sampleRate: number, buckets = 800): Peaks {
     return peaksFrom(pcm, sampleRate, buckets);
+  },
+
+  /**
+   * Decodifica un rango y lo deja en memoria bajo `token`. Los bytes llegan
+   * como transferible, así que no se copian.
+   */
+  async loadRange(
+    bytes: ArrayBuffer,
+    startSec: number,
+    endSec: number,
+    token: string,
+  ): Promise<{ durationSec: number; sampleRate: number }> {
+    if (cached?.token === token) {
+      return {
+        durationSec: cached.pcm.length / cached.sampleRate,
+        sampleRate: cached.sampleRate,
+      };
+    }
+
+    const Ctor = (self as unknown as {
+      OfflineAudioContext: typeof OfflineAudioContext;
+    }).OfflineAudioContext;
+
+    // El contexto se crea antes de decodificar: si el navegador rechazara los
+    // 16 kHz lo hace aquí, y decodeAudioData desacopla el buffer, así que no
+    // habría forma de reintentar con los mismos bytes.
+    let ctx: OfflineAudioContext;
+    try {
+      ctx = new Ctor(1, 1, ANALYSIS_SAMPLE_RATE);
+    } catch {
+      ctx = new Ctor(1, 1, 44100);
+    }
+
+    const buf = await ctx.decodeAudioData(bytes);
+    const sr = buf.sampleRate;
+    const from = Math.max(0, Math.floor(startSec * sr));
+    const to = Math.min(buf.length, Math.ceil(endSec * sr));
+    const len = Math.max(0, to - from);
+
+    const pcm = new Float32Array(len);
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) pcm[i]! += d[from + i]! / buf.numberOfChannels;
+    }
+
+    cached = { token, pcm, sampleRate: sr };
+    return { durationSec: len / sr, sampleRate: sr };
+  },
+
+  /** ¿Está ya decodificado este recorte? */
+  hasRange(token: string): boolean {
+    return cached?.token === token;
+  },
+
+  /** Picos de todo el rango cargado. */
+  peaksOf(token: string, buckets = 800): Peaks | null {
+    if (cached?.token !== token) return null;
+    return peaksFrom(cached.pcm, cached.sampleRate, buckets);
+  },
+
+  /**
+   * Analiza un sub-rango del recorte ya cargado, en segundos relativos al
+   * inicio del recorte. Es lo que usa cada ronda: sin volver a decodificar.
+   */
+  analyzeSub(
+    token: string,
+    fromSec: number,
+    toSec: number,
+    buckets = 800,
+  ): Analysis | null {
+    if (cached?.token !== token) return null;
+    const sr = cached.sampleRate;
+    const a = Math.max(0, Math.floor(fromSec * sr));
+    const b = Math.min(cached.pcm.length, Math.ceil(toSec * sr));
+    if (b <= a) return null;
+    return api.analyze(cached.pcm.subarray(a, b), sr, buckets);
+  },
+
+  releaseRange(): void {
+    cached = null;
   },
 
   /**

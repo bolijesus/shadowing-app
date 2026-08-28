@@ -179,7 +179,7 @@ export default function NuevaPracticaPage() {
         setHasVideo(probe.hasVideo);
         setTitle((t) => t || f.name.replace(/\.[^.]+$/, ""));
         setRange({ start: 0, end: Math.min(probe.durationSec, 40) || 0 });
-        setStep("subs");
+        setStep("range");
       } catch (e) {
         setError(
           e instanceof Error ? e.message : "No se pudo leer el archivo.",
@@ -244,10 +244,19 @@ export default function NuevaPracticaPage() {
     setError(null);
     setAsrBusy("Preparando el motor…");
     try {
-      const { extractRangeAsWav } = await import("@/lib/audio/extract");
+      const { extractRange } = await import("@/lib/audio/clipAnalysis");
       const from = range.start;
       const to = range.end > range.start ? range.end : duration;
-      const wav = await extractRangeAsWav(file, from, to);
+      const wav = await extractRange(file, "nueva", from, to, {
+        onFallback: () =>
+          setAsrBusy(
+            "Este archivo necesita capturarse reproduciéndolo; va en tiempo real…",
+          ),
+        onCaptureProgress: (p) =>
+          setAsrBusy(
+            `Capturando el audio… ${Math.round(p.elapsedSec)}s de ${Math.round(p.totalSec)}s`,
+          ),
+      });
 
       setAsrBusy("Transcribiendo…");
       const res = await transcribe(wav, language, {
@@ -382,7 +391,7 @@ export default function NuevaPracticaPage() {
         className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs font-bold"
         hidden={step === "youtube" || step === "tts" || step === "script"}
       >
-        {(["source", "file", "subs", "range", "rounds"] as Step[]).map((s, i) => (
+        {(["source", "file", "range", "subs", "rounds"] as Step[]).map((s, i) => (
           <li
             key={s}
             aria-current={step === s ? "step" : undefined}
@@ -535,7 +544,7 @@ export default function NuevaPracticaPage() {
 
       {step === "subs" && (
         <section className="space-y-4">
-          <Eyebrow>Paso 3 · Subtítulos</Eyebrow>
+          <Eyebrow>Paso 4 · Subtítulos</Eyebrow>
           <h1 className="h-display text-2xl">Texto de referencia</h1>
 
           <Card className="space-y-3">
@@ -605,12 +614,10 @@ export default function NuevaPracticaPage() {
           </div>
 
           <div className="flex justify-between">
-            <Button variant="ghost" onClick={() => setStep("file")}>
+            <Button variant="ghost" onClick={() => setStep("range")}>
               ← Volver
             </Button>
-            <Button variant="default" onClick={() => setStep("range")}>
-              Continuar
-            </Button>
+            <Button onClick={() => setStep("rounds")}>Continuar</Button>
           </div>
           <p className="text-xs text-ink-soft">
             Sin subtítulos también puedes continuar: la práctica usará una sola
@@ -621,7 +628,7 @@ export default function NuevaPracticaPage() {
 
       {step === "range" && (
         <section className="space-y-4">
-          <Eyebrow>Paso 4 · Rango</Eyebrow>
+          <Eyebrow>Paso 3 · Rango</Eyebrow>
           <h1 className="h-display text-2xl">Recorta lo que vas a practicar</h1>
           <p className="text-sm text-ink-soft">
             El recorte es virtual: marca un tramo del medio original sin ocupar
@@ -689,11 +696,11 @@ export default function NuevaPracticaPage() {
           )}
 
           <div className="flex justify-between">
-            <Button variant="ghost" onClick={() => setStep("subs")}>
+            <Button variant="ghost" onClick={() => setStep("file")}>
               ← Volver
             </Button>
-            <Button variant="default" onClick={() => setStep("rounds")}>
-              Continuar
+            <Button onClick={() => setStep("subs")}>
+              Continuar a los subtítulos
             </Button>
           </div>
         </section>
@@ -800,10 +807,10 @@ export default function NuevaPracticaPage() {
           </div>
 
           <div className="flex justify-between">
-            <Button variant="ghost" onClick={() => setStep("range")}>
+            <Button variant="ghost" onClick={() => setStep("subs")}>
               ← Volver
             </Button>
-            <Button variant="default" onClick={finish} disabled={!!busy}>
+            <Button onClick={finish} disabled={!!busy}>
               Crear y empezar
             </Button>
           </div>
@@ -816,8 +823,8 @@ export default function NuevaPracticaPage() {
 const STEP_ORDER: Record<Step, number> = {
   source: 0,
   file: 1,
-  subs: 2,
-  range: 3,
+  range: 2,
+  subs: 3,
   rounds: 4,
   youtube: 1,
   tts: 1,

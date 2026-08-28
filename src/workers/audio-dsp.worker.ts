@@ -155,6 +155,37 @@ const api = {
     return api.analyze(cached.pcm.subarray(a, b), sr, buckets);
   },
 
+  /** El recorte ya decodificado, como WAV mono de 16 bits. */
+  wavOf(token: string): ArrayBuffer | null {
+    if (cached?.token !== token) return null;
+    const { pcm, sampleRate } = cached;
+    const out = new ArrayBuffer(44 + pcm.length * 2);
+    const dv = new DataView(out);
+    const ascii = (o: number, t: string) => {
+      for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i));
+    };
+    ascii(0, "RIFF");
+    dv.setUint32(4, 36 + pcm.length * 2, true);
+    ascii(8, "WAVE");
+    ascii(12, "fmt ");
+    dv.setUint32(16, 16, true);
+    dv.setUint16(20, 1, true);
+    dv.setUint16(22, 1, true);
+    dv.setUint32(24, sampleRate, true);
+    dv.setUint32(28, sampleRate * 2, true);
+    dv.setUint16(32, 2, true);
+    dv.setUint16(34, 16, true);
+    ascii(36, "data");
+    dv.setUint32(40, pcm.length * 2, true);
+    let off = 44;
+    for (let i = 0; i < pcm.length; i++) {
+      const v = Math.max(-1, Math.min(1, pcm[i]!));
+      dv.setInt16(off, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+      off += 2;
+    }
+    return out;
+  },
+
   releaseRange(): void {
     cached = null;
   },

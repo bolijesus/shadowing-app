@@ -361,6 +361,19 @@ export default function PracticePlayerPage() {
           isTts && round ? `${clip.id}_${round.id}` : clip.id,
           isTts ? 0 : clip.startSec,
           isTts ? Number.MAX_SAFE_INTEGER : clip.endSec,
+          800,
+          {
+            // Códec que Web Audio no decodifica: se captura reproduciéndolo,
+            // en tiempo real, así que hay que decirlo.
+            onFallback: () =>
+              setPeaksNote(
+                "El audio de este archivo no se puede leer directamente, así que se está capturando mientras suena. Solo la primera vez.",
+              ),
+            onCaptureProgress: (cp) =>
+              setPeaksNote(
+                `Capturando el audio… ${Math.round(cp.elapsedSec)}s de ${Math.round(cp.totalSec)}s. Solo la primera vez.`,
+              ),
+          },
         );
         if (!cancelled) {
           setPeaks(p);

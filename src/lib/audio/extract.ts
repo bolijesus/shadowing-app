@@ -46,6 +46,10 @@ export function encodeWav(pcm: Float32Array, sampleRate: number): ArrayBuffer {
   return out;
 }
 
+/**
+ * @deprecated Decodifica en el hilo principal y sin plan B para códecs que
+ * Web Audio no soporta. Usa `extractRange` de `clipAnalysis.ts`.
+ */
 export async function extractRangeAsWav(
   file: Blob,
   startSec: number,

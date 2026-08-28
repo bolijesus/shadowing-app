@@ -17,6 +17,7 @@ import {
   type Peaks,
 } from "./peaks";
 import { FileTooLargeToDecode, MAX_DECODE_BYTES } from "./decode";
+import { captureRangeAudio, type CaptureProgress } from "./captureFallback";
 
 /**
  * Análisis de un recorte, decodificando UNA sola vez.
@@ -45,11 +46,18 @@ let loadedToken = "";
  * reproductor dispararían dos decodificaciones a la vez, que es justo lo que
  * colgaba el navegador.
  */
+export interface LoadOptions {
+  /** Se llama si hay que recurrir a la captura en tiempo real. */
+  onFallback?: () => void;
+  onCaptureProgress?: (p: CaptureProgress) => void;
+}
+
 export async function ensureClipLoaded(
   file: Blob,
   clipId: string,
   startSec: number,
   endSec: number,
+  { onFallback, onCaptureProgress }: LoadOptions = {},
 ): Promise<string> {
   const token = tokenFor(clipId, startSec, endSec);
   if (loadedToken === token && (await dsp().hasRange(token))) return token;
@@ -61,13 +69,35 @@ export async function ensureClipLoaded(
   if (file.size > MAX_DECODE_BYTES) throw new FileTooLargeToDecode(file.size);
 
   loading = (async () => {
-    const bytes = await file.arrayBuffer();
-    await dsp().loadRange(
-      Comlink.transfer(bytes, [bytes]) as unknown as ArrayBuffer,
-      startSec,
-      endSec,
-      token,
-    );
+    try {
+      const bytes = await file.arrayBuffer();
+      await dsp().loadRange(
+        Comlink.transfer(bytes, [bytes]) as unknown as ArrayBuffer,
+        startSec,
+        endSec,
+        token,
+      );
+    } catch (e) {
+      // Hay códecs que el navegador reproduce pero decodeAudioData no sabe
+      // decodificar (AC-3, algunos AAC, MKV). Antes de rendirse se captura
+      // el audio reproduciéndolo, que funciona con cualquier cosa que suene.
+      if (!looksLikeDecodeFailure(e)) throw e;
+      onFallback?.();
+      const captured = await captureRangeAudio(
+        file,
+        startSec,
+        endSec,
+        onCaptureProgress,
+      );
+      const bytes = await captured.arrayBuffer();
+      // Lo capturado ya empieza en 0: el rango se aplicó al grabarlo.
+      await dsp().loadRange(
+        Comlink.transfer(bytes, [bytes]) as unknown as ArrayBuffer,
+        0,
+        Number.MAX_SAFE_INTEGER,
+        token,
+      );
+    }
     loadedToken = token;
     return token;
   })();
@@ -86,6 +116,7 @@ export async function clipPeaks(
   startSec: number,
   endSec: number,
   buckets = 800,
+  opts: LoadOptions = {},
 ): Promise<Peaks> {
   const path = peaksPath(clipId, startSec, endSec);
   if (await blobExists(path)) {
@@ -95,7 +126,7 @@ export async function clipPeaks(
       /* formato viejo: se recalcula */
     }
   }
-  const token = await ensureClipLoaded(file, clipId, startSec, endSec);
+  const token = await ensureClipLoaded(file, clipId, startSec, endSec, opts);
   const peaks = await dsp().peaksOf(token, buckets);
   if (!peaks) throw new Error("No se pudo calcular la onda del recorte.");
   await putBlob(path, serializePeaks(peaks), "analysis", clipId);
@@ -115,6 +146,7 @@ export async function roundAnalysis(
   roundStartSec: number,
   roundEndSec: number,
   buckets = 800,
+  opts: LoadOptions = {},
 ): Promise<Analysis> {
   const path = analysisPath("round", roundId, roundStartSec, roundEndSec);
   if (await blobExists(path)) {
@@ -125,7 +157,13 @@ export async function roundAnalysis(
     }
   }
 
-  const token = await ensureClipLoaded(file, clipId, clipStartSec, clipEndSec);
+  const token = await ensureClipLoaded(
+    file,
+    clipId,
+    clipStartSec,
+    clipEndSec,
+    opts,
+  );
   const a = await dsp().analyzeSub(
     token,
     Math.max(0, roundStartSec - clipStartSec),
@@ -135,6 +173,29 @@ export async function roundAnalysis(
   if (!a) throw new Error("No se pudo analizar esta ronda.");
   await putBlob(path, serializeAnalysis(a), "analysis", roundId);
   return a;
+}
+
+/**
+ * Extrae un rango como WAV mono 16 kHz, con el mismo plan B de captura.
+ * Es lo que usa "Generar transcripción": así no vuelve a fallar por códec.
+ */
+export async function extractRange(
+  file: Blob,
+  clipId: string,
+  startSec: number,
+  endSec: number,
+  opts: LoadOptions = {},
+): Promise<Blob> {
+  const token = await ensureClipLoaded(file, clipId, startSec, endSec, opts);
+  const wav = await dsp().wavOf(token);
+  if (!wav) throw new Error("No se pudo extraer el audio del recorte.");
+  return new Blob([wav], { type: "audio/wav" });
+}
+
+/** ¿El fallo es "no sé decodificar esto" y no otra cosa? */
+function looksLikeDecodeFailure(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /decode|EncodingError|unsupported|no se pudo|unable/i.test(msg);
 }
 
 /** Libera el PCM del worker al salir de la práctica. */

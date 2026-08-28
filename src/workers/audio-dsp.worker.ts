@@ -51,10 +51,13 @@ function peaksFrom(
 ): Peaks {
   const n = pcm.length;
   const out = new Float32Array(buckets * 2);
-  const per = Math.max(1, Math.floor(n / buckets));
+  // Los bordes se reparten sobre TODA la señal, no en pasos de ancho fijo.
+  // Con `floor(n / buckets)` la última columna absorbía el resto y era más
+  // ancha que las demás, así que la posición de una columna no correspondía
+  // exactamente con su instante.
   for (let b = 0; b < buckets; b++) {
-    const start = b * per;
-    const end = b === buckets - 1 ? n : Math.min(n, start + per);
+    const start = Math.floor((b * n) / buckets);
+    const end = b === buckets - 1 ? n : Math.floor(((b + 1) * n) / buckets);
     let mn = 1;
     let mx = -1;
     for (let i = start; i < end; i++) {

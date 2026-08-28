@@ -10,12 +10,6 @@ import {
   dsp,
   type Analysis,
 } from "./analysis";
-import {
-  deserializePeaks,
-  peaksPath,
-  serializePeaks,
-  type Peaks,
-} from "./peaks";
 import { decodeRange, FileTooLargeToDecode, MAX_DECODE_BYTES } from "./decode";
 import { captureRangeAudio, type CaptureProgress } from "./captureFallback";
 
@@ -85,14 +79,20 @@ export async function ensureClipLoaded(
       // el audio reproduciéndolo, que funciona con cualquier cosa que suene.
       if (!looksLikeDecodeFailure(e)) throw e;
       onFallback?.();
-      const captured = await captureRangeAudio(
+      const cap = await captureRangeAudio(
         file,
         startSec,
         endSec,
         onCaptureProgress,
       );
-      // Lo capturado ya empieza en 0: el rango se aplicó al grabarlo.
-      const d = await decodeRange(captured, 0, Number.MAX_SAFE_INTEGER);
+      // La grabación lleva margen por delante y por detrás: se recorta por
+      // donde el reloj del medio dice que empieza el rango. Si se tomara
+      // entera, la onda saldría desplazada respecto al vídeo.
+      const d = await decodeRange(
+        cap.blob,
+        cap.offsetSec,
+        cap.offsetSec + cap.durationSec,
+      );
       pcm = d.pcm;
       sampleRate = d.sampleRate;
     }
@@ -112,30 +112,6 @@ export async function ensureClipLoaded(
   } finally {
     loading = null;
   }
-}
-
-/** Picos del recorte completo, con caché en OPFS. */
-export async function clipPeaks(
-  file: Blob,
-  clipId: string,
-  startSec: number,
-  endSec: number,
-  buckets = 800,
-  opts: LoadOptions = {},
-): Promise<Peaks> {
-  const path = peaksPath(clipId, startSec, endSec);
-  if (await blobExists(path)) {
-    try {
-      return deserializePeaks(await readBlob(path));
-    } catch {
-      /* formato viejo: se recalcula */
-    }
-  }
-  const token = await ensureClipLoaded(file, clipId, startSec, endSec, opts);
-  const peaks = await dsp().peaksOf(token, buckets);
-  if (!peaks) throw new Error("No se pudo calcular la onda del recorte.");
-  await putBlob(path, serializePeaks(peaks), "analysis", clipId);
-  return peaks;
 }
 
 /**

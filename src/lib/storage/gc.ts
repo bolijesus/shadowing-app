@@ -8,14 +8,19 @@ import { listBlobs, removeBlob } from "./opfs";
  * y filas del libro cuyo blob ya no existe (plan D2).
  */
 /**
- * Análisis guardados con el formato de clave antiguo, sin el rango.
- * `analysis/peaks_c1.bin` es viejo; `analysis/peaks_c1_600000-660000.bin` no.
- * Los viejos ya no los busca nadie: se recalculan con la clave nueva, así que
- * hay que retirarlos o se quedarían ocupando sitio para siempre.
+ * Análisis que ya no busca nadie y hay que retirar, o se quedarían ocupando
+ * sitio para siempre. Son dos casos:
+ *
+ * - Clave antigua, sin el rango: `analysis/peaks_c1.bin` es vieja;
+ *   `analysis/peaks_c1_600000-660000.bin` no. Se recalculan con la nueva.
+ * - Todos los `peaks_`: la onda del modelo salía de trocear los picos del
+ *   recorte entero, y eso daba la resolución del recorte, no la de la ronda.
+ *   Ahora cada ronda usa su propio análisis (`round_`) y estos no se leen.
  */
-function isLegacyAnalysis(path: string): boolean {
+function isRetiredAnalysis(path: string): boolean {
   const m = /^analysis\/(peaks|round)_(.+)\.bin$/.exec(path);
   if (!m) return false;
+  if (m[1] === "peaks") return true;
   return !/_\d+-(\d+|end)$/.test(m[2]!);
 }
 
@@ -36,9 +41,9 @@ export async function runStartupGc(): Promise<{ removedFiles: number; removedRow
     }
   }
 
-  // Análisis con la clave antigua: nadie los va a volver a pedir.
+  // Análisis retirados: nadie los va a volver a pedir.
   const legacy = ledger.filter(
-    (r) => isLegacyAnalysis(r.path) && diskPaths.has(r.path),
+    (r) => isRetiredAnalysis(r.path) && diskPaths.has(r.path),
   );
   for (const r of legacy) {
     await removeBlob(r.path);

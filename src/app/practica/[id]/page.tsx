@@ -27,7 +27,11 @@ import {
 import { ensureAudioContext } from "@/lib/audio/context";
 import { resolveMediaSource, requestHandlePermission } from "@/lib/media/source";
 import { mediaFileCache } from "@/lib/media/fileCache";
-import { clipPeaks, roundAnalysis, releaseClip } from "@/lib/audio/clipAnalysis";
+import {
+  ensureClipLoaded,
+  roundAnalysis,
+  releaseClip,
+} from "@/lib/audio/clipAnalysis";
 import {
   analyzeTake,
   saveTakeAnalysis,
@@ -45,7 +49,6 @@ import {
   SLOW_DECODE_BYTES,
 } from "@/lib/audio/decode";
 import { speakWithBrowser, cancelBrowserSpeech } from "@/lib/tts/browser";
-import type { Peaks } from "@/workers/audio-dsp.worker";
 import { putBlob } from "@/lib/storage/blobStore";
 import { readAsBlob } from "@/lib/storage/opfs";
 import {
@@ -115,7 +118,8 @@ export default function PracticePlayerPage() {
     | { kind: "missing"; reason: string }
     | null
   >(null);
-  const [peaks, setPeaks] = React.useState<Peaks | null>(null);
+  /** ¿Está el recorte decodificado? Sin esto no hay onda ni análisis. */
+  const [clipReady, setClipReady] = React.useState(false);
   const [peaksNote, setPeaksNote] = React.useState<string | null>(null);
   const [peaksBusy, setPeaksBusy] = React.useState(false);
   const [peaksAttempt, setPeaksAttempt] = React.useState(0);
@@ -328,11 +332,11 @@ export default function PracticePlayerPage() {
     };
   }, [file, media, showsVideo]);
 
-  /* --- construir picos del recorte --- */
+  /* --- decodificar el recorte (una vez) --- */
   React.useEffect(() => {
     if (!file || !clip) return;
     let cancelled = false;
-    setPeaks(null);
+    setClipReady(false);
     setPeaksBusy(true);
     setPeaksNote(
       file.size > SLOW_DECODE_BYTES
@@ -341,12 +345,11 @@ export default function PracticePlayerPage() {
     );
     (async () => {
       try {
-        const p = await clipPeaks(
+        await ensureClipLoaded(
           file,
           isTts && round ? `${clip.id}_${round.id}` : clip.id,
           isTts ? 0 : clip.startSec,
           isTts ? Number.MAX_SAFE_INTEGER : clip.endSec,
-          800,
           {
             // Códec que Web Audio no decodifica: se captura reproduciéndolo,
             // en tiempo real, así que hay que decirlo.
@@ -361,7 +364,7 @@ export default function PracticePlayerPage() {
           },
         );
         if (!cancelled) {
-          setPeaks(p);
+          setClipReady(true);
           setPeaksNote(null);
         }
       } catch (e) {
@@ -372,7 +375,7 @@ export default function PracticePlayerPage() {
           setPeaksNote(
             e instanceof FileTooLargeToDecode
               ? "Archivo demasiado grande para analizarlo en el navegador."
-              : `No se pudo generar la onda (${detail}). La reproducción y la grabación siguen funcionando.`,
+              : `No se pudo leer el audio (${detail}). La reproducción y la grabación siguen funcionando.`,
           );
         }
       } finally {
@@ -463,29 +466,19 @@ export default function PracticePlayerPage() {
     [youAnalysis],
   );
 
-  const roundPeaks = React.useMemo<Peaks | null>(() => {
-    if (isTts) return peaks;
-    if (!peaks || !clip || !round) return peaks;
-    // Se usa la duración REAL de lo decodificado, no la del recorte: si el
-    // recorte pide más allá del final del audio, decodeRange recorta y los
-    // picos cubren menos. Mapear sobre la duración pedida desplazaría todo
-    // el trozo y la onda dejaría de corresponder con lo que se ve y se oye.
-    const spanSec =
-      peaks.durationSec > 0 ? peaks.durationSec : clip.endSec - clip.startSec;
-    if (spanSec <= 0) return peaks;
-
-    const a = Math.max(0, (round.startSec - clip.startSec) / spanSec);
-    const b = Math.min(1, (round.endSec - clip.startSec) / spanSec);
-    if (b <= a) return peaks;
-
-    const from = Math.floor(a * peaks.buckets);
-    const to = Math.max(from + 1, Math.ceil(b * peaks.buckets));
-    return {
-      buckets: to - from,
-      durationSec: round.endSec - round.startSec,
-      minmax: peaks.minmax.slice(from * 2, to * 2),
-    };
-  }, [peaks, clip, round, isTts]);
+  /**
+   * La onda del modelo sale del análisis de ESTA ronda, no de trocear los
+   * picos del recorte entero.
+   *
+   * Antes se calculaban 800 columnas para todo el recorte y la ronda se
+   * quedaba con su trozo: la resolución era la del recorte, no la de la
+   * ronda. En un recorte de 22 minutos cada columna dura 1,65 s, así que una
+   * ronda de 3 s se dibujaba con dos columnas y los bordes, redondeados a
+   * columna entera, la desplazaban hasta un segundo. La onda no correspondía
+   * con lo que se veía en el vídeo, mientras la curva de entonación —que sí
+   * salía del análisis de la ronda— caía en su sitio.
+   */
+  const roundPeaks = modelAnalysis?.peaks ?? null;
 
   function applyRate(v: number) {
     setRate(v);
@@ -915,7 +908,7 @@ export default function PracticePlayerPage() {
           {peaksNote && (
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs text-ink-soft">{peaksNote}</p>
-              {!peaksBusy && !peaks && (
+              {!peaksBusy && !clipReady && (
                 <Button
                   variant="outline"
                   size="xs"

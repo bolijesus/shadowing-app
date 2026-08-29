@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Button } from "@/components/ui/primitives";
+import { Button, TextInput } from "@/components/ui/primitives";
 import { fmtClock } from "@/lib/util";
 import {
-  NUDGE_STEP_SEC,
+  MAX_NUDGE_SEC,
+  MIN_NUDGE_SEC,
+  clampNudge,
   planNudge,
   type Bounds,
   type NudgePlan,
@@ -15,7 +17,8 @@ import {
  *
  * El afinado automático estira el corte hasta el primer silencio, pero cuando
  * el diálogo va encabalgado no hay silencio al que estirarse. Aquí se toca la
- * frase concreta, oyendo el resultado al momento.
+ * frase concreta, oyendo el resultado al momento, y se decide cuánto: la
+ * cantidad de cada clic la pones tú.
  *
  * Mover un lado mueve la FRONTERA con la ronda vecina: si alargas el final,
  * la siguiente arranca donde acaba esta. Así nada se oye dos veces.
@@ -31,6 +34,8 @@ export function BoundsControl({
   next,
   clip,
   manual,
+  stepSec,
+  onStepChange,
   onNudge,
   onReset,
 }: {
@@ -42,9 +47,26 @@ export function BoundsControl({
   clip: Bounds;
   /** ¿Hay algo fijado a mano que se pueda deshacer? */
   manual: boolean;
+  /** Cuánto suma o resta cada clic. */
+  stepSec: number;
+  onStepChange: (sec: number) => void;
   onNudge: (side: "start" | "end", plan: NudgePlan) => void;
   onReset: () => void;
 }) {
+  /**
+   * Lo escrito se guarda en crudo mientras se teclea: si se normalizara en
+   * cada pulsación no se podría llegar a escribir "0,5" —el "0," se
+   * convertiría en 0,25 antes del "5"—.
+   */
+  const [draft, setDraft] = React.useState(fmtSec(stepSec));
+  React.useEffect(() => setDraft(fmtSec(stepSec)), [stepSec]);
+
+  const commit = (raw: string) => {
+    const v = clampNudge(Number(raw.replace(",", ".")));
+    onStepChange(v);
+    setDraft(fmtSec(v));
+  };
+
   const plan = React.useCallback(
     (side: "start" | "end", deltaSec: number) =>
       planNudge({
@@ -57,6 +79,7 @@ export function BoundsControl({
     [self, prev, next, clip],
   );
 
+  const amount = `${fmtSec(stepSec)} s`;
   const durationSec = Math.max(0, self.endSec - self.startSec);
 
   return (
@@ -67,7 +90,7 @@ export function BoundsControl({
           <span className="font-mono font-bold text-ink">
             {fmtClock(self.startSec)}–{fmtClock(self.endSec)}
           </span>{" "}
-          · {durationSec.toFixed(1).replace(".", ",")} s
+          · {fmtSec(durationSec)} s
         </p>
         {manual && (
           <Button variant="ghost" size="xs" onClick={onReset}>
@@ -77,17 +100,37 @@ export function BoundsControl({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <label className="flex items-center gap-1.5">
+          <span className="text-xs font-bold text-ink-soft">Cantidad</span>
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            min={MIN_NUDGE_SEC}
+            max={MAX_NUDGE_SEC}
+            step={0.05}
+            value={draft}
+            aria-label="Segundos que suma o resta cada botón"
+            className="h-8 w-20 text-sm"
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={(e) => commit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit(e.currentTarget.value);
+            }}
+          />
+          <span className="text-xs font-bold text-ink-soft">s</span>
+        </label>
+
         <Side
           label="Inicio"
           less={{
             label: "−",
-            hint: `Empezar ${step()} después`,
-            plan: plan("start", -NUDGE_STEP_SEC),
+            hint: `Empezar ${amount} después`,
+            plan: plan("start", -stepSec),
           }}
           more={{
             label: "+",
-            hint: `Empezar ${step()} antes`,
-            plan: plan("start", NUDGE_STEP_SEC),
+            hint: `Empezar ${amount} antes`,
+            plan: plan("start", stepSec),
           }}
           onNudge={(p) => onNudge("start", p)}
         />
@@ -95,13 +138,13 @@ export function BoundsControl({
           label="Final"
           less={{
             label: "−",
-            hint: `Terminar ${step()} antes`,
-            plan: plan("end", -NUDGE_STEP_SEC),
+            hint: `Terminar ${amount} antes`,
+            plan: plan("end", -stepSec),
           }}
           more={{
             label: "+",
-            hint: `Terminar ${step()} después`,
-            plan: plan("end", NUDGE_STEP_SEC),
+            hint: `Terminar ${amount} después`,
+            plan: plan("end", stepSec),
           }}
           onNudge={(p) => onNudge("end", p)}
         />
@@ -110,8 +153,9 @@ export function BoundsControl({
   );
 }
 
-function step(): string {
-  return `${NUDGE_STEP_SEC.toFixed(2).replace(".", ",")} s`;
+/** Sin decimales de más: 0,25 · 1 · 1,5 — y con coma, que es lo de aquí. */
+function fmtSec(v: number): string {
+  return String(Math.round(v * 100) / 100).replace(".", ",");
 }
 
 interface Nudge {

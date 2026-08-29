@@ -17,6 +17,7 @@ const DEFAULTS: SettingsState = {
   karaoke: true,
   micLatencyOffsetMs: null,
   phraseTailMs: 0,
+  phraseNudgeSec: 0.25,
   scoreWeights: {
     intonation: 0.25,
     timing: 0.2,

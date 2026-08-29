@@ -15,8 +15,18 @@ export interface Bounds {
   endSec: number;
 }
 
-/** Cuánto mueve cada clic. */
+/** Cuánto mueve cada clic si no se ha elegido otra cosa. */
 export const NUDGE_STEP_SEC = 0.25;
+
+/** Límites de la cantidad que se puede elegir a mano, en segundos. */
+export const MIN_NUDGE_SEC = 0.05;
+export const MAX_NUDGE_SEC = 10;
+
+/** Deja la cantidad escrita dentro de lo razonable. Vacío o basura → 0,25. */
+export function clampNudge(v: number): number {
+  if (!Number.isFinite(v) || v <= 0) return NUDGE_STEP_SEC;
+  return Math.min(MAX_NUDGE_SEC, Math.max(MIN_NUDGE_SEC, v));
+}
 
 /**
  * Mínimo que se le deja a la ronda vecina al empujar su frontera.

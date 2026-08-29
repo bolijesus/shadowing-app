@@ -215,6 +215,11 @@ export interface SettingsState {
    * y no hay silencio al que estirarse.
    */
   phraseTailMs: number;
+  /**
+   * Cuánto audio suma o resta cada clic de los botones de la práctica, en
+   * segundos. Se guarda porque el gusto no cambia de una frase a otra.
+   */
+  phraseNudgeSec: number;
   scoreWeights: {
     intonation: number;
     timing: number;

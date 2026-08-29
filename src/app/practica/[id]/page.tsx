@@ -114,6 +114,7 @@ export default function PracticePlayerPage() {
   const defaultRate = useSettings((s) => s.defaultRate);
   const karaoke = useSettings((s) => s.karaoke);
   const phraseTailMs = useSettings((s) => s.phraseTailMs);
+  const phraseNudgeSec = useSettings((s) => s.phraseNudgeSec);
   const rateRef = React.useRef(1);
 
   const [file, setFile] = React.useState<Blob | null>(null);
@@ -1038,6 +1039,8 @@ export default function PracticePlayerPage() {
             next={nextBounds}
             clip={{ startSec: clip.startSec, endSec: clip.endSec }}
             manual={hasManualBounds(round)}
+            stepSec={phraseNudgeSec}
+            onStepChange={(v) => setSetting("phraseNudgeSec", v)}
             onNudge={applyNudge}
             onReset={resetBounds}
           />

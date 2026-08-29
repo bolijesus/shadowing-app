@@ -7,6 +7,7 @@ import { applyFontSize, applyTheme, useSettings } from "@/lib/stores/settings";
 import { runStartupGc } from "@/lib/storage/gc";
 import { ensurePersistentStorage } from "@/lib/storage/persist";
 import { cx } from "@/components/ui/primitives";
+import { DonateLink } from "@/components/DonateLink";
 
 const NAV = [
   { href: "/", label: "Inicio" },
@@ -49,22 +50,25 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         <Link href="/" className="font-display text-xl font-extrabold tracking-tight">
           Shadowing
         </Link>
-        <nav className="hidden gap-1 sm:flex">
-          {NAV.map((n) => (
-            <Link
-              key={n.href}
-              href={n.href}
-              className={cx(
-                "rounded-lg px-3 py-2 text-sm font-semibold",
-                pathname === n.href
-                  ? "bg-primary text-primary-foreground"
-                  : "text-ink-soft hover:bg-panel hover:text-ink",
-              )}
-            >
-              {n.label}
-            </Link>
-          ))}
-        </nav>
+        <div className="flex items-center gap-1">
+          <nav className="hidden gap-1 sm:flex">
+            {NAV.map((n) => (
+              <Link
+                key={n.href}
+                href={n.href}
+                className={cx(
+                  "rounded-lg px-3 py-2 text-sm font-semibold",
+                  pathname === n.href
+                    ? "bg-primary text-primary-foreground"
+                    : "text-ink-soft hover:bg-panel hover:text-ink",
+                )}
+              >
+                {n.label}
+              </Link>
+            ))}
+          </nav>
+          <DonateLink className="ml-1" />
+        </div>
       </header>
 
       <main className="flex-1">{children}</main>

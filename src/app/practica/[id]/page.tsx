@@ -48,6 +48,7 @@ import {
 import { scoreRound, contourForDisplay } from "@/lib/scoring/scoreRound";
 import { buildAdvice } from "@/lib/scoring/advice";
 import { WaveformPanel } from "@/components/waveform/WaveformPanel";
+import { DonateLink } from "@/components/DonateLink";
 import { ScoreBreakdown } from "@/components/practice/ScoreBreakdown";
 import { CurveDuel } from "@/components/games/CurveDuel";
 import { ContourCompare } from "@/components/waveform/ContourCompare";
@@ -877,9 +878,15 @@ export default function PracticePlayerPage() {
         <p className="text-sm font-bold">
           Ronda {idx + 1} de {total}
         </p>
-        <span className="text-xs font-semibold text-ink-soft">
-          {Object.keys(takes).length}/{total} tomas
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-ink-soft">
+            {Object.keys(takes).length}/{total} tomas
+          </span>
+          {/* El armazón no envuelve esta pantalla (vuelve `children` a secas
+              cuando la ruta es el reproductor), así que el enlace se pone
+              aquí para que también se vea practicando. */}
+          <DonateLink variant="icon" />
+        </div>
       </header>
 
       <div className="px-4 pt-3">

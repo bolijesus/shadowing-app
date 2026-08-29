@@ -5,7 +5,6 @@ import type { Analysis, AudioDspApi, Peaks } from "@/workers/audio-dsp.worker";
 import { blobExists, readBlob } from "@/lib/storage/opfs";
 import { putBlob } from "@/lib/storage/blobStore";
 import { decodeRange } from "./decode";
-import { rangeTag } from "./peaks";
 
 let _dsp: Comlink.Remote<AudioDspApi> | null = null;
 
@@ -71,6 +70,20 @@ export async function analyzeTake(
 }
 
 /* ---------- serialización compacta del análisis en OPFS ---------- */
+
+/**
+ * Rango en milisegundos para la clave de caché: estable y comparable.
+ *
+ * La clave incluye el rango, no solo el id. Los rangos cambian —al unir o
+ * partir rondas, o al afinar los cortes contra el audio—, y con la clave solo
+ * por id se devolvía el análisis del rango ANTERIOR: la onda y la curva
+ * dejaban de corresponder con lo que suena. Así cualquier cambio falla la
+ * caché y se recalcula solo; los huérfanos los recoge el GC de arranque.
+ */
+export function rangeTag(startSec: number, endSec: number): string {
+  const ms = (v: number) => (Number.isFinite(v) ? Math.round(v * 1000) : "end");
+  return `${ms(startSec)}-${ms(endSec)}`;
+}
 
 const MAGIC = 0x53484131; // "SHA1"
 
@@ -176,28 +189,6 @@ export function analysisPath(
   return `analysis/${kind}_${id}${tag}.bin`;
 }
 
-/**
- * @deprecated Decodifica el archivo entero en el hilo principal, una vez por
- * ronda. Usa `roundAnalysis` de `clipAnalysis.ts`.
- */
-export async function getOrBuildRoundAnalysis(
-  roundId: string,
-  file: Blob,
-  startSec: number,
-  endSec: number,
-): Promise<Analysis> {
-  const path = analysisPath("round", roundId, startSec, endSec);
-  if (await blobExists(path)) {
-    try {
-      return deserializeAnalysis(await readBlob(path));
-    } catch {
-      /* formato viejo: se recalcula */
-    }
-  }
-  const a = await analyzeRange(file, startSec, endSec);
-  await putBlob(path, serializeAnalysis(a), "analysis", roundId);
-  return a;
-}
 
 export async function saveTakeAnalysis(
   takeId: string,

@@ -33,7 +33,7 @@ import {
   createTranscript,
 } from "@/lib/db/repositories";
 import type { Cue, PracticeMode, Source } from "@/lib/types";
-import { builtModes, modeMeta } from "@/lib/practice/modes";
+import { MODES, modeMeta } from "@/lib/practice/modes";
 import { mediaFileCache } from "@/lib/media/fileCache";
 import { fmtBytes, fmtClock, uid } from "@/lib/util";
 import { TextSourceStep } from "@/components/nueva/TextSourceStep";
@@ -720,7 +720,7 @@ export default function NuevaPracticaPage() {
                 aria-label="Actividad"
                 value={mode}
                 onValueChange={(v) => setMode(v as PracticeMode)}
-                options={builtModes().map((m) => ({
+                options={MODES.map((m) => ({
                   value: m.id,
                   label: m.label,
                 }))}

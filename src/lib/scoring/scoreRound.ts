@@ -197,42 +197,6 @@ export function scoreRound(args: ScoreArgs): RoundScore {
   };
 }
 
-/* --- WER: se conserva para el modo Dictado, que compara texto escrito --- */
-
-export function normalizeForWer(s: string): string[] {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^\p{L}\p{N}\s']/gu, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-export function wordErrorRate(hyp: string, ref: string): number {
-  const h = normalizeForWer(hyp);
-  const r = normalizeForWer(ref);
-  if (r.length === 0) return h.length === 0 ? 0 : 1;
-
-  const prev = new Array<number>(h.length + 1);
-  const cur = new Array<number>(h.length + 1);
-  for (let j = 0; j <= h.length; j++) prev[j] = j;
-
-  for (let i = 1; i <= r.length; i++) {
-    cur[0] = i;
-    for (let j = 1; j <= h.length; j++) {
-      const cost = r[i - 1] === h[j - 1] ? 0 : 1;
-      cur[j] = Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + cost);
-    }
-    for (let j = 0; j <= h.length; j++) prev[j] = cur[j]!;
-  }
-  return prev[h.length]! / r.length;
-}
-
-export function wordsScore(hyp: string, ref: string): number {
-  return Math.round(Math.max(0, Math.min(100, 100 * (1 - wordErrorRate(hyp, ref)))));
-}
-
 /**
  * Curva lista para pintar: semitonos remuestreados al ancho de la onda.
  *

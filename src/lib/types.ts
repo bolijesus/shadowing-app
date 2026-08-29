@@ -3,20 +3,7 @@
  * Todo vive en el dispositivo: metadatos en IndexedDB (Dexie), blobs en OPFS.
  */
 
-export type PracticeMode =
-  | "shadowing-echo"
-  | "shadowing-sync"
-  | "read-aloud"
-  | "dubbing"
-  | "cloze"
-  | "dictation"
-  | "curve-duel"
-  | "stress-tap"
-  | "speed-ladder"
-  | "minimal-pairs"
-  | "reorder"
-  | "anticipation"
-  | "roleplay";
+export type PracticeMode = "shadowing-echo" | "curve-duel";
 
 export interface TtsRequest {
   provider: "browser" | "gemini" | "openai" | "elevenlabs";
@@ -60,18 +47,11 @@ export type TranscriptOrigin =
   | "youtube-captions"
   | "manual";
 
-export interface Word {
-  text: string;
-  ipa?: string;
-  stress?: number[];
-}
-
 export interface Cue {
   start: number;
   end: number;
   text: string;
   speaker?: string;
-  words?: Word[];
 }
 
 export interface Transcript {
@@ -108,8 +88,6 @@ export interface Round {
   ttsProvider?: string;
   ttsVoice?: string;
   ttsStyle?: string;
-  /** ★ manual para el mazo de repaso (Fase 5). */
-  starred?: boolean;
 }
 
 export type ScoreComponentKey =

@@ -12,6 +12,7 @@ export default function HomePage() {
     [],
   );
   const takeCount = useLiveQuery(() => db().takes.count(), []);
+  const practiceCount = useLiveQuery(() => db().practices.count(), []);
 
   return (
     <div className="space-y-6">
@@ -34,18 +35,20 @@ export default function HomePage() {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Card>
-          <Eyebrow>Repaso de hoy</Eyebrow>
-          <p className="mt-1 text-2xl font-bold text-ink">Sin frases pendientes</p>
-          <p className="mt-1 text-sm text-ink-soft">
-            El mazo de repaso espaciado llega en una fase posterior.
-          </p>
-        </Card>
-        <Card>
           <Eyebrow>Actividad</Eyebrow>
           <p className="mt-1 text-2xl font-bold text-data">
             {takeCount ?? 0}
             <span className="ml-1 text-base font-medium text-ink-soft">
               tomas grabadas
+            </span>
+          </p>
+        </Card>
+        <Card>
+          <Eyebrow>Prácticas</Eyebrow>
+          <p className="mt-1 text-2xl font-bold text-data">
+            {practiceCount ?? 0}
+            <span className="ml-1 text-base font-medium text-ink-soft">
+              creadas
             </span>
           </p>
         </Card>

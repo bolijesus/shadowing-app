@@ -34,6 +34,13 @@ import {
   releaseClip,
 } from "@/lib/audio/clipAnalysis";
 import {
+  CLEAR_BOUNDS,
+  effectiveBounds,
+  hasManualBounds,
+  type NudgePlan,
+} from "@/lib/practice/roundBounds";
+import { BoundsControl } from "@/components/practice/BoundsControl";
+import {
   analyzeTake,
   saveTakeAnalysis,
   type Analysis,
@@ -56,7 +63,7 @@ import {
   YOUTUBE_LIMITS_NOTE,
   YouTubeRangePlayer,
 } from "@/lib/youtube/iframe";
-import { saveTake } from "@/lib/db/repositories";
+import { saveTake, setRoundBounds } from "@/lib/db/repositories";
 import { useSettings } from "@/lib/stores/settings";
 import { extForMime, fmtClock, uid } from "@/lib/util";
 
@@ -426,8 +433,59 @@ export default function PracticePlayerPage() {
     };
   }, [round, clip, clipReady, isTts, isYouTube, phraseTailMs, file]);
 
-  const playStart = bounds?.startSec ?? round?.startSec ?? 0;
-  const playEnd = bounds?.endSec ?? round?.endSec ?? 0;
+  /**
+   * Tramo que suena de verdad: lo que hayas fijado a mano manda sobre el
+   * afinado automático, y cada lado va por su cuenta.
+   */
+  const play = round ? effectiveBounds(round, bounds) : null;
+  const playStart = play?.startSec ?? 0;
+  const playEnd = play?.endSec ?? 0;
+
+  /**
+   * Tramos de las vecinas, para saber hasta dónde se puede correr la
+   * frontera. Se usa lo manual si lo hay y, si no, el tiempo del subtítulo:
+   * el afinado automático de la vecina no está calculado aquí y solo estira,
+   * así que el subtítulo es el límite conservador. Como mucho, el botón se
+   * deshabilita un cuarto de segundo antes de lo estrictamente necesario.
+   */
+  const prevBounds = React.useMemo(() => {
+    const r = rounds?.[idx - 1];
+    return r ? effectiveBounds(r, null) : null;
+  }, [rounds, idx]);
+  const nextBounds = React.useMemo(() => {
+    const r = rounds?.[idx + 1];
+    return r ? effectiveBounds(r, null) : null;
+  }, [rounds, idx]);
+
+  /** Aplica un movimiento de frontera a esta ronda y a la vecina. */
+  const applyNudge = React.useCallback(
+    (side: "start" | "end", plan: NudgePlan) => {
+      if (!round) return;
+      const neighbour = rounds?.[side === "start" ? idx - 1 : idx + 1];
+      void setRoundBounds([
+        { id: round.id, patch: plan.self },
+        ...(plan.neighbour && neighbour
+          ? [{ id: neighbour.id, patch: plan.neighbour }]
+          : []),
+      ]);
+    },
+    [round, rounds, idx],
+  );
+
+  /**
+   * Vuelve al automático. De las vecinas solo se limpia el lado que da a esta
+   * ronda: el otro puede haberlo ajustado el usuario por su cuenta.
+   */
+  const resetBounds = React.useCallback(() => {
+    if (!round) return;
+    const before = rounds?.[idx - 1];
+    const after = rounds?.[idx + 1];
+    void setRoundBounds([
+      { id: round.id, patch: CLEAR_BOUNDS },
+      ...(before ? [{ id: before.id, patch: { manualEndSec: undefined } }] : []),
+      ...(after ? [{ id: after.id, patch: { manualStartSec: undefined } }] : []),
+    ]);
+  }, [round, rounds, idx]);
 
   /* --- rango del RangePlayer para la ronda actual --- */
   React.useEffect(() => {
@@ -972,6 +1030,18 @@ export default function PracticePlayerPage() {
             </div>
           )}
         </div>
+
+        {!isTts && round && clip && play && (
+          <BoundsControl
+            self={play}
+            prev={prevBounds}
+            next={nextBounds}
+            clip={{ startSec: clip.startSec, endSec: clip.endSec }}
+            manual={hasManualBounds(round)}
+            onNudge={applyNudge}
+            onReset={resetBounds}
+          />
+        )}
 
         {isYouTube && (phase === "compare" || youAnalysis) && (
           <WaveformPanel

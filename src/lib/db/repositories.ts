@@ -15,6 +15,7 @@ import type {
 } from "@/lib/types";
 import type { Cue } from "@/lib/types";
 import type { RoundSeed } from "@/lib/subtitles/segmentation";
+import type { BoundsPatch } from "@/lib/practice/roundBounds";
 import { uid } from "@/lib/util";
 import { deleteBlob, deleteBlobsByOwner } from "@/lib/storage/blobStore";
 import { removeBlob } from "@/lib/storage/opfs";
@@ -135,6 +136,25 @@ export async function countTakesOf(roundIds: string[]): Promise<number> {
  * borra la segunda. Las tomas de ambas se pierden, porque una grabación
  * deja de corresponder a la ronda si cambia su texto y su rango.
  */
+/**
+ * Fija el tramo ajustado a mano de una o varias rondas.
+ *
+ * Mover un lado corre la frontera con la ronda vecina, así que casi siempre
+ * hay dos filas que tocar. Van en una transacción: si solo se escribiera un
+ * lado, las dos rondas se solaparían o dejarían un hueco entre ellas.
+ *
+ * Un campo a `undefined` borra la propiedad —así funciona `update` en
+ * Dexie—, que es como se vuelve al afinado automático.
+ */
+export async function setRoundBounds(
+  entries: { id: string; patch: BoundsPatch }[],
+): Promise<void> {
+  if (!entries.length) return;
+  await db().transaction("rw", db().rounds, async () => {
+    for (const e of entries) await db().rounds.update(e.id, e.patch);
+  });
+}
+
 export async function mergeRoundWithNext(
   practiceId: string,
   roundId: string,
@@ -161,6 +181,9 @@ export async function mergeRoundWithNext(
       // El audio generado ya no vale: el texto ha cambiado.
       modelAudioRef: undefined,
       analysisRef: undefined,
+      // Y el tramo ajustado a mano tampoco: era de los tiempos de antes.
+      manualStartSec: undefined,
+      manualEndSec: undefined,
     });
     await db().rounds.delete(nextId);
     await db().takes.bulkDelete(takes.map((t) => t.id));
@@ -222,6 +245,10 @@ export async function splitRound(
       text: firstText,
       modelAudioRef: undefined,
       analysisRef: undefined,
+      // Al partir, las dos mitades vuelven al afinado automático: el tramo
+      // ajustado a mano era del texto entero. La segunda nace sin él.
+      manualStartSec: undefined,
+      manualEndSec: undefined,
     });
     await db().rounds.put(second);
     await db().takes.bulkDelete(takes.map((t) => t.id));

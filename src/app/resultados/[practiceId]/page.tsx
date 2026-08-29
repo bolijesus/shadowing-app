@@ -21,6 +21,7 @@ import {
   releaseClip,
 } from "@/lib/audio/clipAnalysis";
 import { useSettings } from "@/lib/stores/settings";
+import { effectiveBounds } from "@/lib/practice/roundBounds";
 import { contourForDisplay, type RoundScore } from "@/lib/scoring/scoreRound";
 import { resolveMediaSource } from "@/lib/media/source";
 import { mediaFileCache } from "@/lib/media/fileCache";
@@ -360,8 +361,12 @@ function RoundDetail({
     phraseTailMs,
   ]);
 
-  const playStart = bounds?.startSec ?? round.startSec;
-  const playEnd = bounds?.endSec ?? round.endSec;
+  // El mismo tramo efectivo que en la práctica: lo ajustado a mano manda
+  // sobre el afinado automático. Si aquí sonara el corte del subtítulo, el
+  // modelo no sería el que imitaste.
+  const play = effectiveBounds(round, bounds);
+  const playStart = play.startSec;
+  const playEnd = play.endSec;
 
   React.useEffect(() => {
     if (!file) return;

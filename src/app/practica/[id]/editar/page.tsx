@@ -399,7 +399,15 @@ export default function EditPracticePage() {
                   Ronda {i + 1}
                   {!isTts && (
                     <span className="ml-2 font-mono text-xs font-normal text-ink-soft">
-                      {fmtClock(r.startSec)}–{fmtClock(r.endSec)}
+                      {/* El tramo ajustado a mano, si lo hay. El afinado
+                          automático no se calcula aquí: necesita el audio
+                          decodificado y esta pantalla no lo abre. */}
+                      {fmtClock(r.manualStartSec ?? r.startSec)}–
+                      {fmtClock(r.manualEndSec ?? r.endSec)}
+                      {(r.manualStartSec !== undefined ||
+                        r.manualEndSec !== undefined) && (
+                        <span className="ml-1 not-italic">· a mano</span>
+                      )}
                     </span>
                   )}
                 </span>

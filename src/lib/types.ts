@@ -80,6 +80,17 @@ export interface Round {
   endSec: number;
   text: string;
   ipa?: string;
+  /**
+   * Tramo fijado a mano desde la práctica, en tiempos absolutos del medio.
+   *
+   * `startSec` / `endSec` siguen siendo los del subtítulo y no se tocan: así
+   * volver al afinado automático es borrar estos dos campos, sin copias ni
+   * migraciones. Cada lado va por su cuenta a propósito — al mover la
+   * frontera con la ronda vecina solo queda fijado ese lado, y el otro se
+   * sigue afinando solo contra el audio.
+   */
+  manualStartSec?: number;
+  manualEndSec?: number;
   /** OPFS: audio del modelo extraído o generado por TTS. */
   modelAudioRef?: string;
   /** OPFS: F0 + envolvente de energía del modelo. */

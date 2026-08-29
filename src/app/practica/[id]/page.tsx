@@ -157,6 +157,8 @@ export default function PracticePlayerPage() {
   const [showIntonation, setShowIntonation] = React.useState(true);
   const [showIpa, setShowIpa] = React.useState(false);
   const [scoring, setScoring] = React.useState(false);
+  /** Por qué no hay nota, cuando no la hay. Nunca se deja en silencio. */
+  const [scoreIssue, setScoreIssue] = React.useState<string | null>(null);
   const [roundScore, setRoundScore] = React.useState<
     ReturnType<typeof scoreRound> | null
   >(null);
@@ -515,6 +517,7 @@ export default function PracticePlayerPage() {
     setRecPct(0);
     setYouAnalysis(null);
     setRoundScore(null);
+    setScoreIssue(null);
   }, [round, loop, loopTimes, isTts]);
 
   /**
@@ -659,6 +662,36 @@ export default function PracticePlayerPage() {
     (rec as unknown as { _iv?: number })._iv = iv as unknown as number;
   }
 
+  /**
+   * Análisis del modelo para puntuar, esperándolo si hace falta.
+   *
+   * Antes se leía el ref a secas y, si aún no había llegado, la ronda se
+   * quedaba sin nota y sin avisar. El ref se vacía cada vez que se rehace el
+   * efecto de análisis —también al mover los cortes a mano, porque escribir
+   * en la tabla de rondas devuelve un objeto nuevo—, así que grabar justo
+   * después de tocar los botones caía ahí. `roundAnalysis` comparte la
+   * promesa en vuelo y cachea en OPFS: volver a pedirlo es barato.
+   */
+  async function modelAnalysisNow(): Promise<Analysis | null> {
+    if (modelAnalysisRef.current) return modelAnalysisRef.current;
+    if (!file || !round || !clip) return null;
+    try {
+      const a = await roundAnalysis(
+        file,
+        isTts ? `${clip.id}_${round.id}` : clip.id,
+        isTts ? 0 : clip.startSec,
+        isTts ? Number.MAX_SAFE_INTEGER : clip.endSec,
+        round.id,
+        isTts ? 0 : playStart,
+        isTts ? Number.MAX_SAFE_INTEGER : playEnd,
+      );
+      modelAnalysisRef.current = a;
+      return a;
+    } catch {
+      return null;
+    }
+  }
+
   async function stopRecording() {
     const rec = recorderRef.current;
     if (!rec || !round) return;
@@ -685,13 +718,14 @@ export default function PracticePlayerPage() {
 
     // Análisis de la toma y puntuación frente al modelo.
     setScoring(true);
+    setScoreIssue(null);
     try {
       const latency =
         useSettings.getState().micLatencyOffsetMs ?? defaultLatencyOffsetMs();
       const takeAnalysis = await analyzeTake(result.blob, latency);
       setYouAnalysis(takeAnalysis);
 
-      const modelA = modelAnalysisRef.current;
+      const modelA = await modelAnalysisNow();
       if (modelA) {
         const sc = scoreRound({
           model: modelA,
@@ -702,9 +736,16 @@ export default function PracticePlayerPage() {
         });
         setRoundScore({ ...sc, tip: buildAdvice(sc) });
       }
-    } catch {
+    } catch (e) {
       setYouAnalysis(null);
       setRoundScore(null);
+      // Antes esto se tragaba en silencio y el panel se quedaba vacío sin
+      // explicar nada, que es lo peor de los dos mundos.
+      setScoreIssue(
+        `No se ha podido analizar tu grabación (${
+          e instanceof Error ? e.message : String(e)
+        }). Puedes volver a grabar o comparar de oído.`,
+      );
     } finally {
       setScoring(false);
     }
@@ -1203,6 +1244,47 @@ export default function PracticePlayerPage() {
                   Juntas
                 </Button>
               </div>
+
+              {/* Superpuestas: en paneles separados hay que compararlas de
+                  memoria y no se ve DÓNDE te separas. Primero el ritmo, que
+                  es lo más fácil de corregir, y después la entonación. */}
+              {!scoring && youAnalysis && (
+                <WaveCompare
+                  model={roundPeaks}
+                  take={youAnalysis.peaks}
+                  height={130}
+                />
+              )}
+
+              {!scoring && youAnalysis && modelContour && showIntonation && (
+                <ContourCompare
+                  model={modelContour}
+                  take={youContour}
+                  height={140}
+                />
+              )}
+
+              {!scoring && roundScore && (
+                <div className="space-y-2">
+                  <Eyebrow>Coincidencia · ronda {idx + 1}</Eyebrow>
+                  <ScoreBreakdown score={roundScore} />
+                </div>
+              )}
+
+              {/* Sin nota nunca se deja el hueco callado: §13.9 prohíbe
+                  inventar un número, no explicar por qué no lo hay. */}
+              {!scoring && !roundScore && youAnalysis && (
+                <p className="text-sm text-ink-soft">
+                  {scoreIssue ??
+                    (isYouTube
+                      ? "En modo YouTube no hay audio del modelo, así que no hay nota acústica. Para comparar tu entonación con la del modelo, sube el audio como archivo."
+                      : "No se ha podido analizar el audio del modelo, así que esta ronda no lleva nota. Puedes escuchar y comparar igualmente.")}
+                </p>
+              )}
+
+              {!scoring && !youAnalysis && scoreIssue && (
+                <p className="text-sm text-ink-soft">{scoreIssue}</p>
+              )}
               <Button
                 variant="outline"
                 className="w-full"

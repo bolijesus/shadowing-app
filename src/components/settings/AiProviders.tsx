@@ -25,7 +25,6 @@ import {
   unlock,
 } from "@/lib/crypto/keystore";
 import {
-  PROVIDERS,
   getProvider,
   providersFor,
   testConnection,

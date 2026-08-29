@@ -166,12 +166,22 @@ export default function PracticePlayerPage() {
   const micGranted = React.useRef(false);
   const pendingRecord = React.useRef(false);
 
-  const mediaElRef = React.useRef<HTMLMediaElement | null>(null);
   const playerRef = React.useRef<RangePlayer | null>(null);
   const recorderRef = React.useRef<VoiceRecorder | null>(null);
   const objectUrlRef = React.useRef<string | null>(null);
   const desiredRangeRef = React.useRef<[number, number]>([0, 0]);
-  const videoRef = React.useRef<HTMLVideoElement>(null);
+  /**
+   * El <video> como ESTADO, no como ref.
+   *
+   * El efecto que monta el reproductor elige el <video> si está y, si no,
+   * crea un <audio> suelto. Con un ref, si el efecto corría antes de que
+   * React colocara el elemento, la práctica se quedaba sonando por un
+   * elemento que no está en pantalla —imagen muerta, audio bien— y no había
+   * vuelta atrás, porque el ref no dispara el efecto al aparecer. Con estado
+   * sí lo dispara. El setter de useState tiene identidad estable, así que
+   * como ref de callback no provoca bucles.
+   */
+  const [videoEl, setVideoEl] = React.useState<HTMLVideoElement | null>(null);
   const ytHostRef = React.useRef<HTMLDivElement>(null);
   const ytRef = React.useRef<YouTubeRangePlayer | null>(null);
 
@@ -306,12 +316,9 @@ export default function PracticePlayerPage() {
     // Con vídeo se usa el <video> del JSX, que sí está en el árbol y por
     // tanto se ve. Sin vídeo basta un <audio> suelto, sin nada que pintar.
     const el: HTMLMediaElement =
-      showsVideo && videoRef.current
-        ? videoRef.current
-        : document.createElement("audio");
+      showsVideo && videoEl ? videoEl : document.createElement("audio");
     el.src = url;
     el.preload = "auto";
-    mediaElRef.current = el;
     const rp = new RangePlayer(el);
     rp.playbackRate = rateRef.current;
     rp.onEnded(() => setPhase((p) => (p === "listen" ? "listen" : p)));
@@ -338,9 +345,8 @@ export default function PracticePlayerPage() {
       // El <video> lo posee React: se le quita la fuente en vez de tirarlo.
       if (el.tagName === "VIDEO") el.removeAttribute("src");
       playerRef.current = null;
-      mediaElRef.current = null;
     };
-  }, [file, media, showsVideo]);
+  }, [file, media, showsVideo, videoEl]);
 
   /* --- decodificar el recorte (una vez) --- */
   React.useEffect(() => {
@@ -967,7 +973,7 @@ export default function PracticePlayerPage() {
             seguir la boca y el gesto del hablante. */}
         {showsVideo && !isCurveDuel && (
           <video
-            ref={videoRef}
+            ref={setVideoEl}
             playsInline
             className="aspect-video w-full rounded-xl bg-panel object-contain"
             aria-label="Vídeo del recorte"
